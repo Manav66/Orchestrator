@@ -16,6 +16,7 @@ from flowctl.app.application import run_and_record
 from flowctl.core.pipeline import Pipeline
 from flowctl.core.task import task
 from flowctl.storage.db import get_engine, get_session_factory, init_db
+from flowctl.storage.models import Pipeline as PipelineModel
 from flowctl.storage.models import Run, TaskResult
 
 
@@ -86,6 +87,56 @@ def test_two_runs_of_the_same_pipeline_are_both_recorded_separately():
     run_and_record(pipeline, session)
 
     assert session.query(Run).filter_by(pipeline_name="repeatable").count() == 2
+
+
+def test_skipped_tasks_are_persisted_with_skipped_status():
+    """Review-feedback gap: nothing previously asserted that a task
+    the executor marks SKIPPED (because its dependency failed) is
+    actually saved to the database with that status.
+    """
+
+    @task()
+    def upstream_fails():
+        raise RuntimeError("boom")
+
+    @task(depends_on=[upstream_fails])
+    def downstream(_result):
+        return "should never run"
+
+    pipeline = Pipeline("cascade_persisted", [upstream_fails, downstream])
+    session = _fresh_session()
+
+    run = run_and_record(pipeline, session)
+
+    results_by_name = {tr.task_name: tr for tr in run.task_results}
+    assert results_by_name["downstream"].status == "skipped"
+    assert results_by_name["downstream"].error is not None
+
+    # Re-fetch independently to prove it was actually written to the DB,
+    # not just present on the in-memory object returned by run_and_record.
+    reloaded = session.query(Run).filter_by(pipeline_name="cascade_persisted").one()
+    reloaded_downstream = next(tr for tr in reloaded.task_results if tr.task_name == "downstream")
+    assert reloaded_downstream.status == "skipped"
+
+
+def test_ad_hoc_run_does_not_create_a_pipeline_row():
+    """Review-feedback gap: run_and_record() must never silently
+    auto-register a pipeline. Running an unregistered pipeline should
+    leave the `pipelines` table empty, even though its Run/TaskResult
+    rows are saved.
+    """
+
+    @task()
+    def one():
+        return 1
+
+    pipeline = Pipeline("never_registered", [one])
+    session = _fresh_session()
+
+    run_and_record(pipeline, session)
+
+    assert session.query(Run).filter_by(pipeline_name="never_registered").count() == 1
+    assert session.query(PipelineModel).count() == 0
 
 
 def test_phase1_engine_modules_have_no_database_imports():

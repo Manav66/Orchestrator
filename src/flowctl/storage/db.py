@@ -7,6 +7,7 @@ answers "how do I connect" and "how do I get a session."
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine
@@ -22,9 +23,13 @@ def get_engine(db_path: str | Path | None = None, *, echo: bool = False) -> Engi
 
     Pass ":memory:" for an ephemeral, in-memory database (used heavily
     in tests). Otherwise, the parent directory is created if needed.
+
+    If db_path is None, falls back to the FLOWCTL_DB_PATH environment
+    variable (handy for pointing the CLI at a temp DB in tests) and
+    finally to DEFAULT_DB_PATH.
     """
     if db_path is None:
-        db_path = DEFAULT_DB_PATH
+        db_path = os.environ.get("FLOWCTL_DB_PATH", str(DEFAULT_DB_PATH))
 
     if str(db_path) == ":memory:":
         url = "sqlite:///:memory:"
