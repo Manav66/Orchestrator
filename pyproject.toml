@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flowctl"
+version = "0.1.0"
+description = "A small, local Python task orchestrator: dependency-aware pipelines, retries, scheduling, and a monitoring dashboard."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "p1_manaverm" }]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "sqlalchemy>=2.0",
+    "croniter>=2.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.scripts]
+flowctl = "flowctl.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flowctl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
