@@ -76,3 +76,35 @@ def test_logs_command_with_unknown_run_id_fails_cleanly():
     result = runner.invoke(app, ["logs", "999999"])
     assert result.exit_code == 1
     assert "No run with id" in result.stdout
+
+
+def test_register_without_schedule_flag_does_not_wipe_existing_schedule():
+    """Regression test for the review-flagged bug: re-running `flowctl
+    register` without --schedule used to silently clear an already-set
+    schedule, which would make the scheduler stop firing the pipeline.
+    """
+    first = runner.invoke(
+        app, ["register", str(FIXTURES / "demo_pipeline.py"), "--schedule", "0 6 * * *"]
+    )
+    assert first.exit_code == 0
+
+    second = runner.invoke(app, ["register", str(FIXTURES / "demo_pipeline.py")])
+    assert second.exit_code == 0
+
+    status_result = runner.invoke(app, ["status"])
+    assert "0 6 * * *" in status_result.stdout
+
+
+def test_register_with_empty_schedule_clears_it_on_purpose():
+    runner.invoke(app, ["register", str(FIXTURES / "demo_pipeline.py"), "--schedule", "0 6 * * *"])
+    result = runner.invoke(app, ["register", str(FIXTURES / "demo_pipeline.py"), "--schedule", ""])
+    assert result.exit_code == 0
+    assert "schedule=none" in result.stdout
+
+
+def test_run_with_attr_selects_the_right_pipeline_from_a_multi_pipeline_file():
+    result = runner.invoke(
+        app, ["run", str(FIXTURES / "multi_pipeline.py"), "--attr", "pipeline_two"]
+    )
+    assert result.exit_code == 0
+    assert "multi_two" in result.stdout

@@ -15,15 +15,42 @@ never do.
 """
 from __future__ import annotations
 
-from typing import Optional
+from contextlib import contextmanager
+from typing import Iterator, Optional
 
 from sqlalchemy.orm import Session
 
 from flowctl.app.loader import load_pipeline_from_file, make_load_ref
 from flowctl.core.executor import Executor, PipelineResult
 from flowctl.core.pipeline import Pipeline
+from flowctl.storage.db import get_engine, get_session_factory, init_db
 from flowctl.storage.models import Pipeline as PipelineModel
 from flowctl.storage.models import Run, TaskResult
+
+# Sentinel meaning "the caller didn't specify a schedule at all", distinct
+# from an explicit `schedule=None`, which means "clear the schedule on
+# purpose". Without this distinction, re-registering an already-scheduled
+# pipeline without repeating --schedule would silently wipe it -- exactly
+# the bug flagged in review.
+UNSET = object()
+
+
+@contextmanager
+def get_session() -> Iterator[Session]:
+    """The one place that knows how to open (and close) a DB session.
+
+    CLI/scheduler/dashboard code should call this instead of importing
+    flowctl.storage.db directly, so the "three doors never touch
+    storage themselves" rule is actually true, not just true of the
+    business logic they call.
+    """
+    engine = get_engine()
+    init_db(engine)
+    session = get_session_factory(engine)()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def run_and_record(pipeline: Pipeline, session: Session, *, max_workers: int = 4) -> Run:
@@ -86,7 +113,7 @@ def register(
     session: Session,
     *,
     attr: Optional[str] = None,
-    schedule: Optional[str] = None,
+    schedule: Optional[str] = UNSET,  # type: ignore[assignment]
 ) -> PipelineModel:
     """Register a pipeline as a named, schedulable entity.
 
@@ -94,7 +121,13 @@ def register(
     parses and to read its name), computes a stable load reference
     (absolute path [+ "::attr"]), and upserts a row in the `pipelines`
     table keyed by the pipeline's name. Registering an already-known
-    pipeline updates its schedule/load_ref rather than erroring.
+    pipeline updates its load_ref, but the schedule is only touched if
+    `schedule` was actually passed:
+      - omit `schedule` entirely -> existing schedule is left as-is
+        (fixes the bug where re-registering without --schedule wiped
+        an already-configured schedule)
+      - `schedule=None` -> explicitly clears the schedule
+      - `schedule="0 6 * * *"` -> sets/replaces the schedule
 
     This does NOT run the pipeline. Running and registering are
     independent operations (see module docstring / run_from_file).
@@ -105,11 +138,16 @@ def register(
 
     existing = session.query(PipelineModel).filter_by(name=pipeline.name).one_or_none()
     if existing is None:
-        existing = PipelineModel(name=pipeline.name, schedule=schedule, load_ref=load_ref)
+        existing = PipelineModel(
+            name=pipeline.name,
+            schedule=None if schedule is UNSET else schedule,
+            load_ref=load_ref,
+        )
         session.add(existing)
     else:
-        existing.schedule = schedule
         existing.load_ref = load_ref
+        if schedule is not UNSET:
+            existing.schedule = schedule
 
     session.commit()
     session.refresh(existing)
