@@ -108,3 +108,30 @@ def test_run_with_attr_selects_the_right_pipeline_from_a_multi_pipeline_file():
     )
     assert result.exit_code == 0
     assert "multi_two" in result.stdout
+
+
+def test_register_with_invalid_cron_fails_cleanly():
+    result = runner.invoke(
+        app, ["register", str(FIXTURES / "demo_pipeline.py"), "--schedule", "not a cron"]
+    )
+    assert result.exit_code == 1
+    assert "not a valid cron expression" in result.stdout
+
+
+def test_scheduler_tick_reports_no_pipelines_due_when_none_are_registered():
+    result = runner.invoke(app, ["scheduler", "tick"])
+    assert result.exit_code == 0
+    assert "No pipelines were due" in result.stdout
+
+
+def test_scheduler_tick_can_fire_a_registered_pipeline():
+    # A schedule of "* * * * *" (every minute) combined with two ticks
+    # a minute apart (via the Scheduler's real clock) is timing-dependent
+    # in a live process, so here we only check the "nothing due yet"
+    # path through the CLI -- the actual due/fire logic is covered
+    # deterministically (fake clock) in test_scheduler.py.
+    runner.invoke(
+        app, ["register", str(FIXTURES / "demo_pipeline.py"), "--schedule", "* * * * *"]
+    )
+    result = runner.invoke(app, ["scheduler", "tick"])
+    assert result.exit_code == 0

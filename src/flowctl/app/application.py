@@ -18,6 +18,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
+from croniter import croniter
 from sqlalchemy.orm import Session
 
 from flowctl.app.loader import load_pipeline_from_file, make_load_ref
@@ -133,6 +134,11 @@ def register(
     independent operations (see module docstring / run_from_file).
     Commits its own session.
     """
+    if schedule is not UNSET and schedule is not None and not croniter.is_valid(schedule):
+        raise ValueError(
+            f"{schedule!r} is not a valid cron expression, e.g. '0 6 * * *' for daily at 6am"
+        )
+
     pipeline = load_pipeline_from_file(file_path, attr)
     load_ref = make_load_ref(file_path, attr)
 

@@ -8,6 +8,7 @@ strictly true, not just true of the business logic underneath it.
 """
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import typer
@@ -15,11 +16,15 @@ from rich.console import Console
 from rich.table import Table
 
 from flowctl.app import application as app_layer
+from flowctl.scheduler.scheduler import Scheduler
 
 app = typer.Typer(
     help="flowctl: a small, local Python task orchestrator.",
     no_args_is_help=True,
 )
+scheduler_app = typer.Typer(help="Run or single-step the background scheduler.")
+app.add_typer(scheduler_app, name="scheduler")
+
 console = Console()
 
 STATUS_COLORS = {
@@ -53,11 +58,17 @@ def run(
     Works whether or not the pipeline has ever been registered --
     ad-hoc runs are recorded in history just like registered ones.
     """
-    with app_layer.get_session() as session:
-        run_row = app_layer.run_from_file(file, session, attr=attr)
-        _print_run(run_row)
-        if run_row.status != "success":
-            raise typer.Exit(code=1)
+    try:
+        with app_layer.get_session() as session:
+            run_row = app_layer.run_from_file(file, session, attr=attr)
+            _print_run(run_row)
+            failed = run_row.status != "success"
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1)
+
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @app.command(name="register")
@@ -95,12 +106,17 @@ def register_cmd(
     else:
         schedule_arg = schedule
 
-    with app_layer.get_session() as session:
-        pipeline_row = app_layer.register(file, session, attr=attr, schedule=schedule_arg)
-        console.print(
-            f"[green]Registered[/green] pipeline '{pipeline_row.name}' "
-            f"(schedule={pipeline_row.schedule or 'none'})"
-        )
+    try:
+        with app_layer.get_session() as session:
+            pipeline_row = app_layer.register(file, session, attr=attr, schedule=schedule_arg)
+    except (FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[green]Registered[/green] pipeline '{pipeline_row.name}' "
+        f"(schedule={pipeline_row.schedule or 'none'})"
+    )
 
 
 @app.command()
@@ -163,6 +179,57 @@ def logs(run_id: int = typer.Argument(..., help="Run ID, shown after `flowctl ru
                 console.print(f"    result: {tr.result_repr}")
             if tr.error:
                 console.print(f"    error: {tr.error}")
+
+
+def _print_fired(fired: list[dict]) -> None:
+    if not fired:
+        console.print("[yellow]No pipelines were due.[/yellow]")
+        return
+    for f in fired:
+        color = STATUS_COLORS.get(f["status"], "white")
+        console.print(
+            f"[bold]Fired[/bold] '{f['pipeline']}' -> Run {f['run_id']} "
+            f"[{color}]{f['status'].upper()}[/{color}]"
+        )
+
+
+@scheduler_app.command("tick")
+def scheduler_tick():
+    """Run exactly one scheduler check right now and report what fired.
+
+    Useful for testing/demoing without waiting for real time to pass:
+    register a pipeline with a schedule, then call this repeatedly (or
+    combine with a short --tick-seconds `scheduler start` run) to watch
+    it become due.
+    """
+    fired = Scheduler().tick()
+    _print_fired(fired)
+
+
+@scheduler_app.command("start")
+def scheduler_start(
+    tick_seconds: float = typer.Option(
+        5.0, "--tick-seconds", help="How often to check for due pipelines, in seconds."
+    ),
+):
+    """Start the scheduler and leave it running until Ctrl+C.
+
+    Uses the exact same run_and_record() path as `flowctl run` -- the
+    scheduler has no executor of its own, it just decides *when* to
+    call the same thing the CLI calls on demand.
+    """
+    console.print(
+        f"[bold]Scheduler started[/bold] (checking every {tick_seconds}s). Press Ctrl+C to stop."
+    )
+    scheduler = Scheduler(tick_seconds=tick_seconds)
+    try:
+        while True:
+            fired = scheduler.tick()
+            if fired:  # stay quiet on ticks where nothing was due
+                _print_fired(fired)
+            time.sleep(tick_seconds)
+    except KeyboardInterrupt:
+        console.print("\n[bold]Scheduler stopped.[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover

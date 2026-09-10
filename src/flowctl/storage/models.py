@@ -18,8 +18,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime as _SADateTime
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 
 class Base(DeclarativeBase):
@@ -28,6 +30,38 @@ class Base(DeclarativeBase):
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class TZDateTime(TypeDecorator):
+    """A DateTime column that's always timezone-aware UTC in Python,
+    even though SQLite has no native timezone-aware storage.
+
+    Without this, SQLAlchemy's plain TZDateTime() silently
+    *drops* tzinfo once a row is reloaded through a fresh session or
+    connection on SQLite (it only appears to work in same-session
+    tests because of the identity map, which masks the round-trip).
+    That mismatch (naive vs. aware) breaks any comparison against a
+    timezone-aware "now", which is exactly what the scheduler does on
+    every tick. This type normalizes to naive UTC on the way into the
+    database and reattaches timezone.utc on the way out, so every
+    caller always sees a proper aware datetime, regardless of how many
+    sessions or connections separate the write from the read.
+    """
+
+    impl = _SADateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value: datetime | None, dialect):
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc)
 
 
 class Pipeline(Base):
@@ -41,7 +75,7 @@ class Pipeline(Base):
     # Stable load reference decided in Phase 3, e.g. "module:attribute" or
     # an absolute file path plus pipeline name. Nullable for now.
     load_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=_utcnow)
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
         return f"Pipeline(name={self.name!r}, schedule={self.schedule!r})"
@@ -57,8 +91,8 @@ class Run(Base):
     # (via `flowctl run <file>`) without ever being registered.
     pipeline_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TZDateTime(), nullable=False)
+    ended_at: Mapped[datetime] = mapped_column(TZDateTime(), nullable=False)
 
     task_results: Mapped[list["TaskResult"]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="TaskResult.id"
@@ -78,8 +112,8 @@ class TaskResult(Base):
     task_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TZDateTime(), nullable=False)
+    ended_at: Mapped[datetime] = mapped_column(TZDateTime(), nullable=False)
     # Results can be arbitrary Python objects (dict, str, etc). We store a
     # repr() for display purposes only -- this is not meant to be
     # deserialized back into a live object.

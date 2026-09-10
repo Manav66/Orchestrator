@@ -60,6 +60,14 @@ def test_reregistering_with_explicit_none_clears_the_schedule():
     assert row.schedule is None
 
 
+def test_register_rejects_an_invalid_cron_expression():
+    import pytest
+
+    session = _fresh_session()
+    with pytest.raises(ValueError, match="not a valid cron expression"):
+        register(str(FIXTURE), session, schedule="not a cron string")
+
+
 def test_unset_sentinel_is_distinct_from_none():
     # Sanity check on the sentinel itself: omitting the argument uses
     # the same UNSET object as the default, so callers can compare
