@@ -15,13 +15,19 @@ never do.
 """
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 from croniter import croniter
 from sqlalchemy.orm import Session
 
-from flowctl.app.loader import load_pipeline_from_file, make_load_ref
+from flowctl.app.loader import (
+    build_linear_pipeline,
+    load_pipeline_from_file,
+    load_pipeline_from_ref,
+    make_load_ref,
+)
 from flowctl.core.executor import Executor, PipelineResult
 from flowctl.core.pipeline import Pipeline
 from flowctl.storage.db import get_engine, get_session_factory, init_db
@@ -158,6 +164,128 @@ def register(
     session.commit()
     session.refresh(existing)
     return existing
+
+
+def create_linear_job(
+    name: str,
+    commands: List[str],
+    session: Session,
+    *,
+    schedule: Optional[str] = None,
+) -> PipelineModel:
+    """Create (or replace) a simple, linear job from the dashboard.
+
+    Deliberately limited on purpose (see PROJECT_CONTEXT.md's scoping
+    section): a linear job is an ordered list of shell commands with an
+    optional schedule -- never a branching DAG. Real branching
+    pipelines are always code-defined via `register`. Under the hood
+    this is stored as a Pipeline row with `commands` set instead of
+    `load_ref`; at run time it becomes a real Pipeline of Tasks via
+    build_linear_pipeline(), so it runs through the exact same executor
+    as any code-defined pipeline. Commits its own session.
+    """
+    if not commands:
+        raise ValueError("A linear job needs at least one command")
+    if schedule is not None and not croniter.is_valid(schedule):
+        raise ValueError(
+            f"{schedule!r} is not a valid cron expression, e.g. '0 6 * * *' for daily at 6am"
+        )
+
+    commands_json = json.dumps(commands)
+    existing = session.query(PipelineModel).filter_by(name=name).one_or_none()
+    if existing is None:
+        existing = PipelineModel(
+            name=name, schedule=schedule, load_ref=None, commands=commands_json, enabled=True
+        )
+        session.add(existing)
+    else:
+        existing.load_ref = None
+        existing.commands = commands_json
+        existing.schedule = schedule
+
+    session.commit()
+    session.refresh(existing)
+    return existing
+
+
+def load_pipeline_for_row(pipeline_row: PipelineModel) -> Pipeline:
+    """Turn a Pipeline DB row back into a real, runnable core Pipeline,
+    regardless of whether it's code-defined or a UI-created linear job.
+
+    This is the crux of the hybrid model: both origins converge on the
+    same core.Pipeline representation and the same executor -- there
+    is no second code path for "UI jobs" anywhere below this function.
+    """
+    if pipeline_row.load_ref:
+        return load_pipeline_from_ref(pipeline_row.load_ref)
+    if pipeline_row.commands:
+        return build_linear_pipeline(pipeline_row.name, json.loads(pipeline_row.commands))
+    raise ValueError(
+        f"Pipeline {pipeline_row.name!r} has neither a load_ref nor commands configured"
+    )
+
+
+def run_registered(name: str, session: Session, *, max_workers: int = 4) -> Run:
+    """Run an already-registered pipeline (code-defined or linear job)
+    by name, without needing to know its file path or commands. This is
+    what the dashboard's "Run now" button calls.
+    """
+    pipeline_row = session.query(PipelineModel).filter_by(name=name).one_or_none()
+    if pipeline_row is None:
+        raise ValueError(f"No registered pipeline named {name!r}")
+    pipeline = load_pipeline_for_row(pipeline_row)
+    return run_and_record(pipeline, session, max_workers=max_workers)
+
+
+def update_schedule(name: str, schedule: Optional[str], session: Session) -> PipelineModel:
+    """Set (or clear, with schedule=None) a registered pipeline's cron
+    schedule directly, without needing to reload/revalidate its source.
+    Used by the dashboard's schedule-edit control. Commits its own
+    session.
+    """
+    if schedule is not None and not croniter.is_valid(schedule):
+        raise ValueError(
+            f"{schedule!r} is not a valid cron expression, e.g. '0 6 * * *' for daily at 6am"
+        )
+    pipeline_row = session.query(PipelineModel).filter_by(name=name).one_or_none()
+    if pipeline_row is None:
+        raise ValueError(f"No registered pipeline named {name!r}")
+    pipeline_row.schedule = schedule
+    session.commit()
+    session.refresh(pipeline_row)
+    return pipeline_row
+
+
+def set_enabled(name: str, enabled: bool, session: Session) -> PipelineModel:
+    """Pause (enabled=False) or resume (enabled=True) a pipeline without
+    touching its schedule text. The scheduler skips disabled pipelines.
+    Used by the dashboard's pause/resume control. Commits its own
+    session.
+    """
+    pipeline_row = session.query(PipelineModel).filter_by(name=name).one_or_none()
+    if pipeline_row is None:
+        raise ValueError(f"No registered pipeline named {name!r}")
+    pipeline_row.enabled = enabled
+    session.commit()
+    session.refresh(pipeline_row)
+    return pipeline_row
+
+
+def get_pipeline(session: Session, name: str) -> Optional[PipelineModel]:
+    """Fetch a single registered pipeline by name. Read-only."""
+    return session.query(PipelineModel).filter_by(name=name).one_or_none()
+
+
+def latest_task_statuses(session: Session, pipeline_name: str) -> dict[str, str]:
+    """task_name -> status, from the most recent run of a pipeline.
+
+    Used to color a pipeline's DAG diagram by last-known status. Empty
+    dict if the pipeline has never been run. Read-only.
+    """
+    recent = list_runs(session, pipeline_name=pipeline_name, limit=1)
+    if not recent:
+        return {}
+    return {tr.task_name: tr.status for tr in recent[0].task_results}
 
 
 def list_pipelines(session: Session) -> list[PipelineModel]:

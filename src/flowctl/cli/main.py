@@ -25,6 +25,9 @@ app = typer.Typer(
 scheduler_app = typer.Typer(help="Run or single-step the background scheduler.")
 app.add_typer(scheduler_app, name="scheduler")
 
+dashboard_app = typer.Typer(help="Run the web dashboard.")
+app.add_typer(dashboard_app, name="dashboard")
+
 console = Console()
 
 STATUS_COLORS = {
@@ -230,6 +233,21 @@ def scheduler_start(
             time.sleep(tick_seconds)
     except KeyboardInterrupt:
         console.print("\n[bold]Scheduler stopped.[/bold]")
+
+
+@dashboard_app.command("start")
+def dashboard_start(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+):
+    """Start the web dashboard (reads/writes the exact same DB as the
+    CLI and scheduler -- it's another door into the same history, not
+    a separate system).
+    """
+    import uvicorn
+
+    console.print(f"[bold]Dashboard starting[/bold] at http://{host}:{port}  (Ctrl+C to stop)")
+    uvicorn.run("flowctl.web.app:app", host=host, port=port)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -12,7 +12,6 @@ from typing import Callable, Dict, List, Optional, Set
 from croniter import croniter
 
 from flowctl.app import application as app_layer
-from flowctl.app.loader import load_pipeline_from_ref
 
 
 def _default_clock() -> datetime:
@@ -70,7 +69,7 @@ class Scheduler:
             pipelines = app_layer.list_pipelines(session)
 
         for pipeline_row in pipelines:
-            if not pipeline_row.schedule:
+            if not pipeline_row.schedule or not pipeline_row.enabled:
                 continue
 
             self._seed_last_fired(pipeline_row.name)
@@ -88,7 +87,7 @@ class Scheduler:
 
             self._last_fired[pipeline_row.name] = prev_fire
 
-            pipeline_obj = load_pipeline_from_ref(pipeline_row.load_ref)
+            pipeline_obj = app_layer.load_pipeline_for_row(pipeline_row)
             with app_layer.get_session() as session:
                 run = app_layer.run_and_record(pipeline_obj, session)
                 fired.append(

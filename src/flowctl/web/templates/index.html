@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}flowctl -- pipelines{% endblock %}
+{% block content %}
+
+<section>
+  <h2>Registered pipelines</h2>
+  {% if pipelines %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Kind</th>
+        <th>Schedule</th>
+        <th>Enabled</th>
+        <th>Last run</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in pipelines %}
+      <tr>
+        <td><a href="/pipelines/{{ p.name }}">{{ p.name }}</a></td>
+        <td class="muted">{{ p.kind }}</td>
+        <td class="muted">{{ p.schedule or "-" }}</td>
+        <td>{{ "yes" if p.enabled else "paused" }}</td>
+        <td>
+          <span class="badge" style="background: {{ p.color }};">{{ p.last_status }}</span>
+          {% if p.last_ended %}<span class="muted"> {{ p.last_ended }}</span>{% endif %}
+        </td>
+        <td><a href="/pipelines/{{ p.name }}">details</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No pipelines registered yet. Register one from the CLI (<code>flowctl register &lt;file&gt;</code>) or <a href="/jobs/new">create a simple job</a>.</p>
+  {% endif %}
+</section>
+
+{% if adhoc_runs %}
+<section>
+  <h2>Recent ad-hoc runs <span class="muted">(not registered)</span></h2>
+  <table>
+    <thead><tr><th>Run</th><th>Pipeline</th><th>Status</th><th>Ended</th></tr></thead>
+    <tbody>
+      {% for r in adhoc_runs[:10] %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
+        <td>{{ r.pipeline_name }}</td>
+        <td><span class="badge" style="background: {{ status_color(r.status) }};">{{ r.status }}</span></td>
+        <td class="muted">{{ r.ended_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% endblock %}

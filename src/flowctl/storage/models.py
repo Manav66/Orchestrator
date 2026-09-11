@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime as _SADateTime
+from sqlalchemy import Boolean, DateTime as _SADateTime
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
@@ -73,8 +73,19 @@ class Pipeline(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Stable load reference decided in Phase 3, e.g. "module:attribute" or
-    # an absolute file path plus pipeline name. Nullable for now.
+    # an absolute file path plus pipeline name. Set for code-defined
+    # pipelines; left null for UI-created linear jobs, which use
+    # `commands` instead. A given row has exactly one of the two set.
     load_ref: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # JSON-encoded list of shell commands, e.g. '["echo one", "echo two"]'.
+    # Set only for simple/linear jobs created through the dashboard's
+    # "New Job" form (Phase 5) -- deliberately NOT a general DAG editor,
+    # see flowctl.app.loader.build_linear_pipeline. Null for code-defined
+    # pipelines registered via `flowctl register`.
+    commands: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Pause/resume without losing the configured schedule text (used by
+    # the dashboard's pause control; the scheduler skips disabled rows).
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TZDateTime(), default=_utcnow)
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic

@@ -120,6 +120,19 @@ def test_tick_skips_pipelines_with_no_schedule():
     assert scheduler.tick() == []
 
 
+def test_tick_skips_a_paused_pipeline_even_with_a_due_schedule():
+    row = _register()
+    with app_layer.get_session() as session:
+        app_layer.set_enabled(row.name, False, session)
+
+    clock = FakeClock(datetime(2026, 1, 1, 12, 0, 30, tzinfo=timezone.utc))
+    scheduler = Scheduler(clock=clock)
+    scheduler.tick()
+    clock.advance(minutes=1)
+
+    assert scheduler.tick() == []
+
+
 def test_run_forever_stops_after_max_ticks():
     _register()
     clock = FakeClock(datetime(2026, 1, 1, 12, 0, 30, tzinfo=timezone.utc))

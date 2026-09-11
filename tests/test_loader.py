@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from flowctl.app.loader import load_pipeline_from_file, load_pipeline_from_ref, make_load_ref
+from flowctl.app.loader import (
+    build_linear_pipeline,
+    load_pipeline_from_file,
+    load_pipeline_from_ref,
+    make_load_ref,
+)
+from flowctl.core.executor import Executor, PipelineStatus, TaskStatus
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -42,3 +48,26 @@ def test_make_load_ref_and_round_trip_with_attr():
     assert ref.endswith("::pipeline_one")
     pipeline = load_pipeline_from_ref(ref)
     assert pipeline.name == "multi_one"
+
+
+def test_build_linear_pipeline_runs_commands_in_order_and_captures_output():
+    pipeline = build_linear_pipeline("linear_demo", ["echo first", "echo second"])
+    result = Executor().execute(pipeline)
+
+    assert result.status == PipelineStatus.SUCCESS
+    assert result.task_outcomes["step_1"].result == "first"
+    assert result.task_outcomes["step_2"].result == "second"
+
+
+def test_build_linear_pipeline_skips_later_steps_when_an_earlier_one_fails():
+    pipeline = build_linear_pipeline("linear_fail", ["exit 1", "echo should_not_run"])
+    result = Executor().execute(pipeline)
+
+    assert result.status == PipelineStatus.FAILED
+    assert result.task_outcomes["step_1"].status == TaskStatus.FAILED
+    assert result.task_outcomes["step_2"].status == TaskStatus.SKIPPED
+
+
+def test_build_linear_pipeline_rejects_empty_command_list():
+    with pytest.raises(ValueError, match="at least one command"):
+        build_linear_pipeline("empty", [])

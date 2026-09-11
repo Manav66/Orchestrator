@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}flowctl -- new job{% endblock %}
+{% block content %}
+
+<h2>Create a simple job</h2>
+<p class="muted">
+  A job here is a single command, or an ordered list of commands run one after
+  another, plus an optional schedule. This is intentionally NOT a full
+  branching pipeline builder -- anything with real dependency branching
+  (one step feeding into two, etc.) is defined in Python code and registered
+  via <code>flowctl register</code>. This scope limit is what keeps the tool
+  finishable and honest about what a form can safely represent.
+</p>
+
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<form method="post" action="/jobs/new">
+  <div class="field">
+    <label for="name">Job name</label>
+    <input type="text" id="name" name="name" required placeholder="nightly-backup">
+  </div>
+  <div class="field">
+    <label for="commands">Commands (one per line, run in order)</label>
+    <textarea id="commands" name="commands" rows="6" required placeholder="echo starting backup&#10;tar -czf backup.tar.gz ./data"></textarea>
+    <div class="hint">Each line becomes one step. A step only runs if the one before it succeeded.</div>
+  </div>
+  <div class="field">
+    <label for="schedule">Schedule (optional cron expression)</label>
+    <input type="text" id="schedule" name="schedule" placeholder="0 6 * * *  (leave blank to create without a schedule)">
+  </div>
+  <button class="button primary" type="submit">Create job</button>
+  <a class="button" href="/">Cancel</a>
+</form>
+
+{% endblock %}

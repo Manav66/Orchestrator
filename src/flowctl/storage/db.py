@@ -44,8 +44,28 @@ def get_engine(db_path: str | Path | None = None, *, echo: bool = False) -> Engi
 
 
 def init_db(engine: Engine) -> None:
-    """Create all tables described in flowctl.storage.models, if missing."""
+    """Create all tables described in flowctl.storage.models, if missing,
+    and apply small forward-only migrations for columns added after a
+    database file may already have been created by an earlier phase.
+
+    This is deliberately not a real migration framework (Alembic would
+    be overkill for a local run-history database) -- it just adds a
+    couple of columns if they're missing, so a database created back
+    in Phase 3/4 keeps working after Phase 5 adds new Pipeline columns,
+    instead of erroring with "no such column".
+    """
     Base.metadata.create_all(engine)
+    with engine.connect() as conn:
+        existing_columns = {
+            row[1] for row in conn.exec_driver_sql("PRAGMA table_info(pipelines)").fetchall()
+        }
+        if "commands" not in existing_columns:
+            conn.exec_driver_sql("ALTER TABLE pipelines ADD COLUMN commands TEXT")
+        if "enabled" not in existing_columns:
+            conn.exec_driver_sql(
+                "ALTER TABLE pipelines ADD COLUMN enabled BOOLEAN DEFAULT 1 NOT NULL"
+            )
+        conn.commit()
 
 
 def get_session_factory(engine: Engine) -> sessionmaker[Session]:

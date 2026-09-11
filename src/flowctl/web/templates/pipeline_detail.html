@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}flowctl -- {{ pipeline.name }}{% endblock %}
+{% block content %}
+
+<p><a href="/">&larr; all pipelines</a></p>
+<h2>{{ pipeline.name }}
+  <span class="muted" style="font-size: 14px; font-weight: normal;">
+    ({{ "code-defined" if pipeline.load_ref else "linear job" }})
+  </span>
+</h2>
+
+{% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
+
+<p>
+  <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/run">
+    <button class="button primary" type="submit">Run now</button>
+  </form>
+  <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/toggle">
+    <button class="button {{ 'danger' if pipeline.enabled else '' }}" type="submit">
+      {{ "Pause" if pipeline.enabled else "Resume" }}
+    </button>
+  </form>
+</p>
+
+<section>
+  <h2>Schedule</h2>
+  <form method="post" action="/pipelines/{{ pipeline.name }}/schedule">
+    <div class="field" style="max-width: 320px;">
+      <input type="text" name="schedule" value="{{ pipeline.schedule or '' }}" placeholder="0 6 * * *  (blank = no schedule)">
+      <div class="hint">Status: {{ "enabled" if pipeline.enabled else "paused -- won't fire even if scheduled" }}</div>
+    </div>
+    <button class="button" type="submit">Save schedule</button>
+  </form>
+</section>
+
+<section>
+  <h2>Task graph</h2>
+  <p class="muted">Colored by each task's status in the most recent run. Boxes in the same row have no dependency on each other and run in parallel.</p>
+  {% for level in diagram_levels %}
+  <div class="dag-level">
+    {% for t in level %}
+    <div class="dag-box" style="background: {{ t.color }};">{{ t.name }}</div>
+    {% endfor %}
+  </div>
+  {% if not loop.last %}<div class="dag-arrow">&darr;</div>{% endif %}
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Run history</h2>
+  {% if runs %}
+  <table>
+    <thead><tr><th>Run</th><th>Status</th><th>Started</th><th>Ended</th></tr></thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
+        <td><span class="badge" style="background: {{ r.color }};">{{ r.status }}</span></td>
+        <td class="muted">{{ r.started_at }}</td>
+        <td class="muted">{{ r.ended_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No runs yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}flowctl -- run #{{ run.id }}{% endblock %}
+{% block content %}
+
+<p><a href="/pipelines/{{ run.pipeline_name }}">&larr; {{ run.pipeline_name }}</a></p>
+<h2>Run #{{ run.id }} <span class="badge" style="background: {{ run.color }};">{{ run.status }}</span></h2>
+<p class="muted">started {{ run.started_at }} &mdash; ended {{ run.ended_at }}</p>
+
+<table>
+  <thead><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Duration</th><th>Result / error</th></tr></thead>
+  <tbody>
+    {% for t in tasks %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td><span class="badge" style="background: {{ t.color }};">{{ t.status }}</span></td>
+      <td>{{ t.attempts }}</td>
+      <td>{{ "%.3f"|format(t.duration) }}s</td>
+      <td>
+        {% if t.result %}<code>{{ t.result }}</code>{% endif %}
+        {% if t.error %}<div style="color: #cf222e;">{{ t.error }}</div>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}
