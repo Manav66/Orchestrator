@@ -77,6 +77,14 @@ def test_datetime_stays_timezone_aware_across_separate_sessions_on_a_real_file()
         )
         write_session.commit()
         write_session.close()
+        # Windows keeps the underlying file handle open for as long as the
+        # engine's connection pool holds a connection, even after the
+        # session is closed. Without disposing it explicitly, this test's
+        # own TemporaryDirectory cleanup below fails on Windows with a
+        # file-in-use error (harmless on Linux/macOS, where the OS allows
+        # deleting a file that's still open, which is why this was missed
+        # originally).
+        write_engine.dispose()
 
         # A brand new engine + session, simulating a completely separate
         # process reading the same file.
@@ -86,3 +94,6 @@ def test_datetime_stays_timezone_aware_across_separate_sessions_on_a_real_file()
 
         assert reloaded.started_at.tzinfo is not None
         assert reloaded.started_at == aware_time
+
+        read_session.close()
+        read_engine.dispose()

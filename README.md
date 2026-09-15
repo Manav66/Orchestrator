@@ -1,10 +1,8 @@
 # flowctl
 
-[![CI](https://github.com/<your-username>/<your-repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/<your-repo>/actions/workflows/ci.yml)
+[![CI](https://github.com/Manav66/Orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Manav66/Orchestrator/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-
-*(Replace `<your-username>/<your-repo>` above with this repo's actual path once pushed, so the CI badge resolves.)*
 
 A small, local Python task orchestrator: define pipelines of dependent tasks,
 run them with automatic retries and parallel execution, keep a full history in
@@ -95,8 +93,8 @@ time and execute through the identical `Executor`.
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/Manav66/Orchestrator.git
+cd Orchestrator
 python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -e ".[dev]"

@@ -149,6 +149,13 @@ def register(
     load_ref = make_load_ref(file_path, attr)
 
     existing = session.query(PipelineModel).filter_by(name=pipeline.name).one_or_none()
+    if existing is not None and existing.load_ref is None and existing.commands is not None:
+        raise ValueError(
+            f"{pipeline.name!r} is already registered as a dashboard-created linear job, "
+            "not a code-defined pipeline. Choose a different pipeline name, or delete/rename "
+            "the existing job first."
+        )
+
     if existing is None:
         existing = PipelineModel(
             name=pipeline.name,
@@ -193,6 +200,14 @@ def create_linear_job(
 
     commands_json = json.dumps(commands)
     existing = session.query(PipelineModel).filter_by(name=name).one_or_none()
+    if existing is not None and existing.load_ref is not None:
+        raise ValueError(
+            f"{name!r} is already a code-defined pipeline (registered via `flowctl register`). "
+            "Creating a dashboard job with the same name would silently convert it into a "
+            "linear job and drop its real task graph, so this is refused -- choose a "
+            "different name."
+        )
+
     if existing is None:
         existing = PipelineModel(
             name=name, schedule=schedule, load_ref=None, commands=commands_json, enabled=True

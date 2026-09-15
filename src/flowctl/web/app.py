@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -40,6 +41,17 @@ STATUS_COLORS = {
 
 def _status_color(status: Optional[str]) -> str:
     return STATUS_COLORS.get(status or "", "#6e7781")
+
+
+def _redirect_with_error(base_url: str, exc: Exception) -> RedirectResponse:
+    """Build a redirect carrying an error message, properly URL-encoded.
+
+    Without quoting, a message containing '&', '#', spaces, or other
+    URL-meaningful characters would corrupt the query string (or, worse,
+    let arbitrary text/characters from an exception message leak
+    unescaped into the URL). quote() makes this safe.
+    """
+    return RedirectResponse(url=f"{base_url}?error={quote(str(exc))}", status_code=303)
 
 
 @app.get("/")
@@ -93,9 +105,9 @@ def new_job_submit(
         with app_layer.get_session() as session:
             app_layer.create_linear_job(name, command_list, session, schedule=schedule_value)
     except ValueError as exc:
-        return RedirectResponse(url=f"/jobs/new?error={exc}", status_code=303)
+        return _redirect_with_error("/jobs/new", exc)
 
-    return RedirectResponse(url=f"/pipelines/{name}", status_code=303)
+    return RedirectResponse(url=f"/pipelines/{quote(name)}", status_code=303)
 
 
 @app.get("/pipelines/{name}")
@@ -151,8 +163,8 @@ def run_pipeline_now(name: str):
         with app_layer.get_session() as session:
             app_layer.run_registered(name, session)
     except ValueError as exc:
-        return RedirectResponse(url=f"/pipelines/{name}?error={exc}", status_code=303)
-    return RedirectResponse(url=f"/pipelines/{name}", status_code=303)
+        return _redirect_with_error(f"/pipelines/{quote(name)}", exc)
+    return RedirectResponse(url=f"/pipelines/{quote(name)}", status_code=303)
 
 
 @app.post("/pipelines/{name}/schedule")
@@ -162,8 +174,8 @@ def update_pipeline_schedule(name: str, schedule: str = Form("")):
         with app_layer.get_session() as session:
             app_layer.update_schedule(name, schedule_value, session)
     except ValueError as exc:
-        return RedirectResponse(url=f"/pipelines/{name}?error={exc}", status_code=303)
-    return RedirectResponse(url=f"/pipelines/{name}", status_code=303)
+        return _redirect_with_error(f"/pipelines/{quote(name)}", exc)
+    return RedirectResponse(url=f"/pipelines/{quote(name)}", status_code=303)
 
 
 @app.post("/pipelines/{name}/toggle")
@@ -173,7 +185,7 @@ def toggle_pipeline(name: str):
         if pipeline_row is None:
             raise HTTPException(status_code=404, detail=f"No pipeline named {name!r}")
         app_layer.set_enabled(name, not pipeline_row.enabled, session)
-    return RedirectResponse(url=f"/pipelines/{name}", status_code=303)
+    return RedirectResponse(url=f"/pipelines/{quote(name)}", status_code=303)
 
 
 @app.get("/runs/{run_id}")

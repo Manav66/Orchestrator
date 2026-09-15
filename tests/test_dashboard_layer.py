@@ -115,6 +115,44 @@ def test_get_pipeline_returns_none_for_unknown_name():
     assert get_pipeline(session, "nope") is None
 
 
+def test_create_linear_job_refuses_to_clobber_a_code_defined_pipeline():
+    """Regression test: a dashboard 'New Job' with the same name as an
+    already code-registered pipeline used to silently overwrite it
+    (clearing load_ref, replacing it with commands), converting a real
+    branching pipeline into a linear job with no warning.
+    """
+    session = _fresh_session()
+    register(str(FIXTURE), session)  # registers as "demo_pipeline" (the fixture's Pipeline name)
+
+    with pytest.raises(ValueError, match="already a code-defined pipeline"):
+        create_linear_job("demo_pipeline", ["echo hi"], session)
+
+    # Confirm it's genuinely untouched.
+    row = get_pipeline(session, "demo_pipeline")
+    assert row.load_ref is not None
+    assert row.commands is None
+
+
+def test_register_refuses_to_clobber_a_linear_job():
+    """Same protection in the other direction: `flowctl register`
+    loading a code file whose Pipeline happens to share a name with an
+    existing dashboard-created linear job must not silently convert
+    that job into a code-defined pipeline.
+    """
+    session = _fresh_session()
+    # The fixture file's Pipeline is named "demo_pipeline" -- create a
+    # linear job with that exact name first, so register() collides with it.
+    create_linear_job("demo_pipeline", ["echo hi"], session)
+
+    with pytest.raises(ValueError, match="already registered as a dashboard-created linear job"):
+        register(str(FIXTURE), session)
+
+    # Confirm it's genuinely untouched.
+    row = get_pipeline(session, "demo_pipeline")
+    assert row.commands is not None
+    assert row.load_ref is None
+
+
 def test_latest_task_statuses_empty_until_first_run_then_reflects_it():
     session = _fresh_session()
     create_linear_job("status_job", ["echo one", "echo two"], session)
