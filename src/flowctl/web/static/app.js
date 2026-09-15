@@ -155,15 +155,22 @@ function fcInitPipelineDetail(pipelineName, initialTaskDetails) {
     }
   }
 
+  const contentEl = document.querySelector(".content");
+
   function openPanel(taskName) {
     openTaskName = taskName;
     renderPanel(taskName);
     panel.hidden = false;
+    // Push the page content over (on wide-enough screens -- see the
+    // media query in style.css) instead of the panel just covering
+    // the graph you clicked into.
+    if (contentEl) contentEl.classList.add("panel-open");
   }
 
   function closePanel() {
     openTaskName = null;
     panel.hidden = true;
+    if (contentEl) contentEl.classList.remove("panel-open");
   }
 
   document.querySelectorAll(".dag-node").forEach((node) => {
@@ -215,6 +222,14 @@ function fcInitPipelineDetail(pipelineName, initialTaskDetails) {
 
       taskDetails = data.task_details || {};
       if (openTaskName) renderPanel(openTaskName);
+
+      const summaryEl = document.getElementById("last-run-summary");
+      if (summaryEl) {
+        const s = data.last_run_summary;
+        summaryEl.innerHTML = s
+          ? `Last run ${fcBadge(s.status, s.color)} ${s.duration.toFixed(2)}s &middot; ${s.task_count} task${s.task_count !== 1 ? "s" : ""}`
+          : "Never run yet";
+      }
 
       const historyBody = document.getElementById("run-history-body");
       if (historyBody && data.runs.length) {

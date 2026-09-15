@@ -138,7 +138,7 @@ code, pre, .mono { font-family: var(--font-mono); }
   justify-content: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-panel-alt);
   color: var(--text-primary);
@@ -146,14 +146,24 @@ code, pre, .mono { font-family: var(--font-mono); }
   font-size: 13.5px;
   font-family: var(--font-body);
   font-weight: 500;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
 }
-.btn:hover { background: var(--bg-hover); text-decoration: none; }
+.btn:hover { background: var(--bg-hover); text-decoration: none; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
 .btn.block { width: 100%; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
-.btn.primary:hover { background: #74b6ff; }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+  box-shadow: 0 0 0 0 rgba(88, 166, 255, 0);
+}
+.btn.primary:hover {
+  background: #74b6ff;
+  box-shadow: 0 4px 16px -4px rgba(88, 166, 255, 0.55);
+}
 .btn.danger { background: var(--failed); border-color: var(--failed); color: #1a0505; font-weight: 600; }
-.btn.danger:hover { background: #ff6b63; }
+.btn.danger:hover { background: #ff6b63; box-shadow: 0 4px 16px -4px rgba(248, 81, 73, 0.45); }
 .btn.ghost { background: transparent; }
 
 form.inline { display: inline-block; }
@@ -162,13 +172,25 @@ form.inline { display: inline-block; }
   flex: 1;
   min-width: 0;
   padding: 30px 40px 60px;
+  transition: margin-right 0.18s ease;
+}
+/* When the task-detail panel is open on a wide-enough screen, the page
+   content shifts left to make room instead of the panel just covering
+   whatever was underneath it (a fixed overlay hiding the exact graph
+   you just clicked defeats the point of a "detail panel"). Below this
+   width there isn't room to shrink the content further without
+   squeezing the DAG unreadably, so it falls back to a plain overlay. */
+@media (min-width: 1180px) {
+  .content.panel-open {
+    margin-right: 320px;
+  }
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-4);
 }
 
 .page-title {
@@ -210,8 +232,8 @@ form.inline { display: inline-block; }
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 14px;
-  margin-bottom: 26px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .stat-card {
@@ -220,6 +242,11 @@ form.inline { display: inline-block; }
   border-radius: var(--radius);
   padding: var(--space-3) 18px;
   box-shadow: var(--shadow-panel);
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+.stat-card:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
 }
 .stat-card-top {
   display: flex;
@@ -233,6 +260,10 @@ form.inline { display: inline-block; }
   letter-spacing: 0.06em;
   color: var(--text-faint);
   font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.stat-card-top .label {
+  margin-bottom: 0;
 }
 .stat-card .value {
   font-family: var(--font-display);
@@ -436,7 +467,15 @@ td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; colo
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
-  fill: #06121f;
+  /* Near-white on every status fill, not dark text -- dark text reads
+     fine on the bright green/blue fills but is noticeably weaker on
+     the gray "skipped" fill; one consistent treatment across all
+     statuses is more legible overall than optimizing per-color. */
+  fill: #f4f7fb;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 2.2px;
+  stroke-linejoin: round;
   pointer-events: none;
 }
 .dag-edge {
@@ -451,7 +490,7 @@ td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; colo
   top: 0;
   right: 0;
   height: 100%;
-  width: 360px;
+  width: 320px;
   max-width: 90vw;
   background: var(--bg-panel);
   border-left: 1px solid var(--border);

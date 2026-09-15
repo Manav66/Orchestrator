@@ -9,26 +9,17 @@
 
 <div class="stat-grid">
   <div class="stat-card">
-    <div class="stat-card-top">
-      <div class="label">Pipelines</div>
-      <span class="stat-chip">total</span>
-    </div>
+    <div class="label">Pipelines</div>
     <div class="value">{{ stats.total_pipelines }}</div>
     <div class="trend">registered in this dashboard</div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-top">
-      <div class="label">Enabled</div>
-      <span class="stat-chip stat-chip--good">active</span>
-    </div>
+    <div class="label">Enabled</div>
     <div class="value">{{ stats.enabled_pipelines }}</div>
     <div class="trend">not paused</div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-top">
-      <div class="label">Runs today</div>
-      <span class="stat-chip stat-chip--accent">today</span>
-    </div>
+    <div class="label">Runs today</div>
     <div class="value accent">{{ stats.runs_today }}</div>
     <div class="trend">since midnight</div>
   </div>
@@ -139,6 +130,13 @@
   const chartData = {{ chart_data | tojson }};
   const ctx = document.getElementById('activity-chart');
   if (ctx) {
+    // Read the real, resolved font stack from CSS rather than naming a
+    // webfont directly -- Chart.js draws to a <canvas>, so it can't
+    // fall back the way a `font-family` CSS rule does; naming a font
+    // that isn't actually loaded (leftover from before Chart.js was
+    // vendored and Google Fonts dropped) would silently render in the
+    // browser default instead.
+    const monoFont = getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace';
     new Chart(ctx, {
       type: 'bar',
       data: {
@@ -152,10 +150,10 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { stacked: true, grid: { color: '#1a222c' }, ticks: { color: '#7d8b9a', font: { family: 'JetBrains Mono', size: 10 } } },
-          y: { stacked: true, beginAtZero: true, ticks: { precision: 0, color: '#7d8b9a' }, grid: { color: '#1a222c' } }
+          x: { stacked: true, grid: { color: '#1a222c' }, ticks: { color: '#7d8b9a', font: { family: monoFont, size: 10 } } },
+          y: { stacked: true, beginAtZero: true, ticks: { precision: 0, color: '#7d8b9a', font: { family: monoFont, size: 10 } }, grid: { color: '#1a222c' } }
         },
-        plugins: { legend: { labels: { color: '#8b98a9' } } }
+        plugins: { legend: { labels: { color: '#8b98a9', font: { family: monoFont, size: 11 } } } }
       }
     });
   }

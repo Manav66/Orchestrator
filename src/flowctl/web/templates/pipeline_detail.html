@@ -7,15 +7,15 @@
 <div class="topbar">
   <div>
     <div class="page-title">{{ pipeline.name }} <span class="kind-tag">{{ "code-defined" if pipeline.load_ref else "linear job" }}</span></div>
-    {% if last_run_summary %}
-    <div class="page-subtitle">
+    <div class="page-subtitle" id="last-run-summary">
+      {% if last_run_summary %}
       Last run
       <span class="badge{{ ' running' if last_run_summary.status == 'running' else '' }}" style="background: {{ last_run_summary.color }};">{{ last_run_summary.status }}</span>
       {{ "%.2f"|format(last_run_summary.duration) }}s &middot; {{ last_run_summary.task_count }} task{{ "s" if last_run_summary.task_count != 1 else "" }}
+      {% else %}
+      Never run yet
+      {% endif %}
     </div>
-    {% else %}
-    <div class="page-subtitle">Never run yet</div>
-    {% endif %}
   </div>
   <div class="live-indicator"><span class="pulse"></span> live</div>
 </div>

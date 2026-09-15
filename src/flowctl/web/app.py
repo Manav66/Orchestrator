@@ -176,6 +176,25 @@ def _build_dag(pipeline_obj, statuses: dict) -> dict:
     }
 
 
+def _last_run_summary(runs) -> Optional[dict]:
+    """Duration/task-count/status of the most recent run, for the
+    "Last run 0.42s * 9 tasks" line under a pipeline's title. Shared by
+    both the initial page render and the polling API so the two never
+    drift -- the page-load version alone left this line permanently
+    stuck on whatever it said when the page was first opened, since
+    nothing re-rendered it after a live-polled run finished.
+    """
+    if not runs:
+        return None
+    last = runs[0]
+    return {
+        "duration": (last.ended_at - last.started_at).total_seconds(),
+        "task_count": len(last.task_results),
+        "status": last.status,
+        "color": _status_color(last.status),
+    }
+
+
 def _pipeline_summary(session, p) -> dict:
     recent = app_layer.list_runs(session, pipeline_name=p.name, limit=5)
     last = recent[0] if recent else None
@@ -286,15 +305,7 @@ def pipeline_detail(request: Request, name: str, error: Optional[str] = None):
             for r in runs
         ]
 
-        last_run_summary = None
-        if runs:
-            last = runs[0]
-            last_run_summary = {
-                "duration": (last.ended_at - last.started_at).total_seconds(),
-                "task_count": len(last.task_results),
-                "status": last.status,
-                "color": _status_color(last.status),
-            }
+        last_run_summary = _last_run_summary(runs)
 
     return templates.TemplateResponse(
         request,
@@ -327,6 +338,7 @@ def api_pipeline_detail(name: str):
             "enabled": pipeline_row.enabled,
             "task_statuses": {k: {"status": v, "color": _status_color(v)} for k, v in statuses.items()},
             "task_details": task_details,
+            "last_run_summary": _last_run_summary(runs),
             "runs": [
                 {
                     "id": r.id,
