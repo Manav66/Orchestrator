@@ -12,6 +12,9 @@ from flowctl.app.application import (
     get_pipeline,
     latest_task_details,
     latest_task_statuses,
+    list_pipelines,
+    list_runs,
+    load_demo_content,
     load_pipeline_for_row,
     register,
     run_registered,
@@ -164,6 +167,26 @@ def test_latest_task_statuses_empty_until_first_run_then_reflects_it():
 
     statuses = latest_task_statuses(session, "status_job")
     assert statuses == {"step_1": "success", "step_2": "success"}
+
+
+def test_load_demo_content_registers_and_runs_all_three_examples():
+    # Assumes pytest is run from the repo root, same as every other
+    # test here that references examples/ or tests/fixtures/ by a
+    # relative-feeling path -- load_demo_content deliberately looks
+    # relative to cwd (see its docstring) since it's meant to work the
+    # same way `flowctl register examples/foo.py` already does.
+    session = _fresh_session()
+
+    loaded = load_demo_content(session)
+
+    assert loaded == ["nightly_sales_report", "daily_data_pipeline", "log_analysis"]
+    names = {p.name for p in list_pipelines(session)}
+    assert names == set(loaded)
+
+    for name in loaded:
+        runs = list_runs(session, pipeline_name=name, limit=1)
+        assert len(runs) == 1
+        assert runs[0].status in {"success", "failed"}  # ran for real, not a no-op
 
 
 def test_latest_task_details_empty_until_first_run_then_has_rich_fields():

@@ -7,7 +7,10 @@
 <div class="topbar">
   <div class="page-title">Run #{{ run.id }} <span class="badge{{ ' running' if run.status == 'running' else '' }}" style="background: {{ run.color }};">{{ run.status }}</span></div>
 </div>
-<p class="muted" style="margin-top: -10px;">started {{ run.started_at }} &mdash; ended {{ run.ended_at }} &mdash; total {{ "%.3f"|format(run.duration) }}s</p>
+<p class="muted" style="margin-top: -10px;">
+  started <span title="{{ run.started_at }}">{{ run.started_at | relative_time }}</span>
+  &mdash; total {{ "%.3f"|format(run.duration) }}s
+</p>
 
 <div class="panel">
   <h2>Timeline</h2>
@@ -16,7 +19,9 @@
   <div class="gantt-row">
     <div class="gantt-label">{{ t.name }}</div>
     <div class="gantt-track">
-      <div class="gantt-bar" style="left: {{ t.offset_pct }}%; width: {{ t.width_pct }}%; background: {{ t.color }};" title="{{ t.name }}: {{ '%.3f'|format(t.duration) }}s"></div>
+      <div class="gantt-bar gantt-bar--{{ t.status }}" style="left: {{ t.offset_pct }}%; width: {{ t.width_pct }}%; background: {{ t.color }};" title="{{ t.name }} ({{ t.status }}): {{ '%.3f'|format(t.duration) }}s">
+        {% if t.status == "failed" %}<span class="gantt-icon" aria-hidden="true">&times;</span>{% elif t.status == "skipped" %}<span class="gantt-icon" aria-hidden="true">&#8942;</span>{% endif %}
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -35,7 +40,12 @@
         <td class="mono">{{ "%.3f"|format(t.duration) }}s</td>
         <td>
           {% if t.result %}<span class="result-text mono">{{ t.result }}</span>{% endif %}
-          {% if t.error %}<div class="error-text">{{ t.error }}</div>{% endif %}
+          {% if t.error %}
+          <div class="error-block">
+            <div class="error-text mono">{{ t.error }}</div>
+            <button class="copy-btn" type="button" data-copy-text="{{ t.error }}" title="Copy error text">Copy</button>
+          </div>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

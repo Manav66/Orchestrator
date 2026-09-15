@@ -16,9 +16,11 @@ never do.
 from __future__ import annotations
 
 import json
+import threading
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Iterator, List, Optional
 
 from croniter import croniter
@@ -93,7 +95,33 @@ def run_and_record(pipeline: Pipeline, session: Session, *, max_workers: int = 4
     session.commit()
     session.refresh(run)
 
-    result: PipelineResult = Executor(max_workers=max_workers).execute(pipeline)
+    try:
+        result: PipelineResult = Executor(max_workers=max_workers).execute(pipeline)
+    except Exception as exc:
+        # A task failing is not this branch -- the Executor already
+        # catches and records those as a normal "failed" TaskResult.
+        # This is for the rarer case of the *engine itself* raising
+        # (a genuine bug, a pipeline with no tasks, etc.). Without this,
+        # the row we just committed as "running" would stay that way
+        # forever -- a permanently stuck blue badge is a worse demo
+        # failure than a pipeline crashing outright, so we still record
+        # a terminal, explainable result before re-raising.
+        now = datetime.now(timezone.utc)
+        run.status = "failed"
+        run.ended_at = now
+        run.task_results.append(
+            TaskResult(
+                task_name="__pipeline_crash__",
+                status="failed",
+                attempts=1,
+                started_at=now,
+                ended_at=now,
+                result_repr=None,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        )
+        session.commit()
+        raise
 
     run.status = result.status.value
     run.started_at = result.started_at
@@ -269,6 +297,44 @@ def run_registered(name: str, session: Session, *, max_workers: int = 4) -> Run:
     return run_and_record(pipeline, session, max_workers=max_workers)
 
 
+def run_registered_in_background(name: str, *, max_workers: int = 4) -> None:
+    """Fire-and-forget version of run_registered(), for the dashboard's
+    "Run now" button.
+
+    The naive version of that button calls run_registered() directly
+    inside the request handler, which blocks the HTTP response until
+    the *entire* pipeline finishes -- for anything that takes more than
+    an instant, this makes the dashboard's whole live-refresh feature
+    pointless, since the "running" state is never actually observable:
+    the request returns only once the run is already done.
+
+    This opens its own session on a background thread instead, so the
+    caller (a POST route) can 303-redirect immediately and let the
+    existing 4-second poll show the transition from "running" to
+    "success"/"failed" for real. Existence is still checked
+    synchronously first, so a typo'd name raises ValueError right away
+    instead of silently doing nothing in the background.
+    """
+
+    with get_session() as session:
+        pipeline_row = session.query(PipelineModel).filter_by(name=name).one_or_none()
+        if pipeline_row is None:
+            raise ValueError(f"No registered pipeline named {name!r}")
+
+    def _run() -> None:
+        with get_session() as bg_session:
+            try:
+                run_registered(name, bg_session, max_workers=max_workers)
+            except Exception:
+                # run_and_record's own try/except already committed a
+                # terminal "failed" row with the crash recorded as a
+                # task result before re-raising -- there's no caller on
+                # a background thread to hand this exception to.
+                pass
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def update_schedule(name: str, schedule: Optional[str], session: Session) -> PipelineModel:
     """Set (or clear, with schedule=None) a registered pipeline's cron
     schedule directly, without needing to reload/revalidate its source.
@@ -351,6 +417,47 @@ def latest_task_details(session: Session, pipeline_name: str) -> dict[str, dict]
             "run_id": run.id,
         }
     return details
+
+
+_DEMO_PIPELINES = [
+    ("examples/sample_pipeline.py", "0 6 * * *"),
+    ("examples/data_pipeline.py", "30 5 * * *"),
+    ("examples/log_analysis_pipeline.py", "0 4 * * *"),
+]
+
+
+def load_demo_content(session: Session) -> list[str]:
+    """One-click demo seeding for the dashboard's empty-state button.
+
+    A recruiter or interviewer looking at a freshly-cloned repo will
+    not run CLI commands before opening the dashboard -- an empty
+    Overview page is a weak first impression no matter how good the
+    UI is. This registers the three example pipelines (if not already
+    registered) and runs each once, so the dashboard looks like an
+    active system immediately.
+
+    Looks for examples/ relative to the current working directory,
+    matching how the CLI docs already say to run `flowctl` from the
+    repo root; a missing file is skipped rather than raised, so a
+    partial checkout still loads whatever it can. Commits its own
+    session (via register()/run_and_record(), which each commit).
+    Returns the names of pipelines that were (re)registered and run.
+    """
+    loaded = []
+    for rel_path, schedule in _DEMO_PIPELINES:
+        path = Path(rel_path)
+        if not path.exists():
+            continue
+        pipeline_row = register(str(path), session, schedule=schedule)
+        pipeline = load_pipeline_for_row(pipeline_row)
+        try:
+            run_and_record(pipeline, session)
+        except Exception:
+            # Already recorded as a failed run by run_and_record's own
+            # failsafe -- still worth loading the rest of the demo set.
+            pass
+        loaded.append(pipeline_row.name)
+    return loaded
 
 
 def list_pipelines(session: Session) -> list[PipelineModel]:

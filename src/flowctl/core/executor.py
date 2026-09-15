@@ -128,6 +128,19 @@ class Executor:
                     else:
                         # A dependency failed or was skipped upstream:
                         # cascade the skip instead of running this task.
+                        # Name the specific upstream task(s) responsible
+                        # rather than a generic message -- "why was this
+                        # skipped" is one of the first things someone
+                        # clicking a skipped node in the dashboard wants
+                        # to know, and tracing it back through the graph
+                        # by hand is exactly the kind of thing a tool
+                        # like this should just tell you directly.
+                        blockers = [
+                            f"{dep.name} ({outcomes[dep.name].status.value})"
+                            for dep in t.depends_on
+                            if dep.name not in outcomes
+                            or outcomes[dep.name].status != TaskStatus.SUCCESS
+                        ]
                         now = _now()
                         outcomes[t.name] = TaskOutcome(
                             task_name=t.name,
@@ -135,7 +148,7 @@ class Executor:
                             attempts=0,
                             started_at=now,
                             ended_at=now,
-                            error="skipped: one or more dependencies did not succeed",
+                            error=f"skipped: upstream not successful: {', '.join(blockers)}",
                         )
 
                 if not to_run:

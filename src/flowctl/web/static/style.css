@@ -18,12 +18,27 @@
 
   --success: #3fb950;
   --failed: #f85149;
-  --skipped: #d29922;
+  --skipped: #7d8b9a;
+  --pending: #d29922;
   --running: #58a6ff;
 
-  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
-  --font-body: "Inter", "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  /* 8/12/16px spacing rhythm, used instead of one-off pixel values */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 20px -12px rgba(0, 0, 0, 0.35);
+
+  /* No webfont network dependency on purpose (see base.html) -- these
+     stacks lean on strong platform-native fonts instead: Segoe UI
+     (Windows), San Francisco (macOS, via -apple-system), Inter/Roboto
+     if actually installed, and a generic fallback last. */
+  --font-display: -apple-system, "Segoe UI", "Inter", "Helvetica Neue", sans-serif;
+  --font-body: -apple-system, "Segoe UI", "Inter", "Helvetica Neue", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", "Menlo", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -54,14 +69,14 @@ code, pre, .mono { font-family: var(--font-mono); }
 }
 
 .sidebar {
-  width: 232px;
+  width: 224px;
   flex-shrink: 0;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
-  padding: 22px 18px;
+  padding: var(--space-4) 18px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: var(--space-3);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -69,8 +84,8 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 .brand {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 19px;
+  font-weight: 600;
+  font-size: 17px;
   letter-spacing: -0.01em;
   color: var(--text-primary);
   display: flex;
@@ -79,27 +94,43 @@ code, pre, .mono { font-family: var(--font-mono); }
 }
 
 .brand .dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 8px 1px var(--accent-soft);
 }
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
+/* The primary action lives right under the brand, not buried in a
+   footer -- "create something" should be the most reachable action in
+   a tool whose whole point is running/creating pipelines. */
+.sidebar-primary-action { margin-top: 2px; }
+.sidebar-primary-action .btn {
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-soft);
+}
 
 .nav a {
   display: block;
-  color: var(--text-muted);
-  padding: 8px 10px;
+  color: var(--text-faint);
+  padding: 7px 10px;
   border-radius: 6px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 .nav a:hover { background: var(--bg-hover); color: var(--text-primary); text-decoration: none; }
-.nav a.active { background: var(--accent-soft); color: var(--accent); }
+.nav a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 
-.sidebar-footer { margin-top: auto; }
+.sidebar-footer { margin-top: auto; font-size: 11.5px; color: var(--text-faint); }
 
 .btn {
   display: inline-flex;
@@ -147,6 +178,15 @@ form.inline { display: inline-block; }
   letter-spacing: -0.01em;
 }
 
+.page-subtitle {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .live-indicator {
   display: inline-flex;
   align-items: center;
@@ -177,34 +217,61 @@ form.inline { display: inline-block; }
 .stat-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px 18px;
+  border-radius: var(--radius);
+  padding: var(--space-3) 18px;
+  box-shadow: var(--shadow-panel);
+}
+.stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
 }
 .stat-card .label {
-  font-size: 11.5px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-faint);
-  margin-bottom: 8px;
   font-weight: 600;
 }
 .stat-card .value {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 27px;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.15;
 }
 .stat-card .value.accent { color: var(--accent); }
 .stat-card .value.good { color: var(--success); }
+.stat-card .trend {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.stat-chip {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 100px;
+  background: var(--bg-panel-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+}
+.stat-chip--good { color: var(--success); border-color: rgba(63, 185, 80, 0.35); background: rgba(63, 185, 80, 0.08); }
+.stat-chip--accent { color: var(--accent); border-color: rgba(88, 166, 255, 0.35); background: var(--accent-soft); }
+.stat-chip--warn { color: var(--pending); border-color: rgba(210, 153, 34, 0.35); background: rgba(210, 153, 34, 0.08); }
 
 /* ---------- panels / sections ---------- */
 
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 22px;
-  margin-bottom: 22px;
+  border-radius: var(--radius);
+  padding: var(--space-4) 22px;
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-panel);
 }
 .panel h2 {
   font-family: var(--font-display);
@@ -226,7 +293,7 @@ form.inline { display: inline-block; }
 table { width: 100%; border-collapse: collapse; }
 th, td {
   text-align: left;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-soft);
   font-size: 13px;
 }
@@ -241,18 +308,35 @@ tbody tr:hover { background: var(--bg-hover); }
 td.muted, span.muted { color: var(--text-muted); }
 td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-muted); }
 
+.details-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 100px;
+  border: 1px solid rgba(88, 166, 255, 0.28);
+  background: var(--accent-soft);
+}
+.details-cta:hover {
+  text-decoration: none;
+  background: rgba(88, 166, 255, 0.2);
+}
+
 /* ---------- badges / pills ---------- */
 
 .badge {
   display: inline-block;
-  padding: 2px 9px;
+  padding: 3px 10px;
   border-radius: 100px;
   color: #06121f;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 .badge.running { animation: pulse 1.6s infinite ease-in-out; }
 
@@ -311,6 +395,18 @@ td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; colo
   color: var(--text-muted);
   font-size: 13.5px;
   padding: 20px 0;
+}
+.empty-state-block {
+  padding: 12px 0 20px;
+}
+.empty-state-block .btn {
+  margin-right: 10px;
+}
+.badge-link {
+  text-decoration: none;
+}
+.badge-link:hover .badge {
+  filter: brightness(1.15);
 }
 
 /* ---------- DAG diagram ---------- */
@@ -463,6 +559,29 @@ td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; colo
   bottom: 2px;
   border-radius: 4px;
   min-width: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Failed/skipped bars get a diagonal stripe pattern plus a tiny icon,
+   not just a different fill color -- color alone isn't a safe signal
+   for colorblind viewers, and a stripe reads as "abnormal" at a glance
+   even in a small conference-room screenshot. */
+.gantt-bar--failed,
+.gantt-bar--skipped {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.22) 0px,
+    rgba(0, 0, 0, 0.22) 4px,
+    transparent 4px,
+    transparent 9px
+  );
+}
+.gantt-icon {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 1;
 }
 
 /* ---------- misc ---------- */
@@ -470,6 +589,28 @@ td.mono, span.mono-cell { font-family: var(--font-mono); font-size: 12.5px; colo
 .back-link { display: inline-block; margin-bottom: 14px; color: var(--text-muted); font-size: 13px; }
 .result-text { color: var(--text-muted); }
 .error-text { color: var(--failed); }
+.error-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.error-block .error-text {
+  flex: 1;
+}
+.copy-btn {
+  flex-shrink: 0;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.copy-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+}
 
 @media (max-width: 820px) {
   .shell { flex-direction: column; }

@@ -9,24 +9,46 @@
 
 <div class="stat-grid">
   <div class="stat-card">
-    <div class="label">Pipelines</div>
+    <div class="stat-card-top">
+      <div class="label">Pipelines</div>
+      <span class="stat-chip">total</span>
+    </div>
     <div class="value">{{ stats.total_pipelines }}</div>
+    <div class="trend">registered in this dashboard</div>
   </div>
   <div class="stat-card">
-    <div class="label">Enabled</div>
+    <div class="stat-card-top">
+      <div class="label">Enabled</div>
+      <span class="stat-chip stat-chip--good">active</span>
+    </div>
     <div class="value">{{ stats.enabled_pipelines }}</div>
+    <div class="trend">not paused</div>
   </div>
   <div class="stat-card">
-    <div class="label">Runs today</div>
+    <div class="stat-card-top">
+      <div class="label">Runs today</div>
+      <span class="stat-chip stat-chip--accent">today</span>
+    </div>
     <div class="value accent">{{ stats.runs_today }}</div>
+    <div class="trend">since midnight</div>
   </div>
   <div class="stat-card">
-    <div class="label">Success rate</div>
+    <div class="stat-card-top">
+      <div class="label">Success rate</div>
+      <span class="stat-chip {{ 'stat-chip--good' if (stats.success_rate is not none and stats.success_rate >= 90) else 'stat-chip--warn' if stats.success_rate is not none else '' }}">
+        {{ "healthy" if (stats.success_rate is not none and stats.success_rate >= 90) else "watch" if stats.success_rate is not none else "n/a" }}
+      </span>
+    </div>
     <div class="value good">{{ stats.success_rate if stats.success_rate is not none else "-" }}{{ "%" if stats.success_rate is not none else "" }}</div>
+    <div class="trend">last 200 runs</div>
   </div>
   <div class="stat-card">
-    <div class="label">Running now</div>
+    <div class="stat-card-top">
+      <div class="label">Running now</div>
+      <span class="stat-chip {{ 'stat-chip--accent' if stats.currently_running else '' }}">{{ "live" if stats.currently_running else "idle" }}</span>
+    </div>
     <div class="value {{ 'accent' if stats.currently_running else '' }}">{{ stats.currently_running }}</div>
+    <div class="trend">executing this instant</div>
   </div>
 </div>
 
@@ -59,16 +81,33 @@
         <td>{{ "yes" if p.enabled else "paused" }}</td>
         <td class="js-dots"><span class="dot-row">{% for d in p.recent_dots %}<span class="dot" style="background: {{ d.color }};" title="{{ d.status }}"></span>{% endfor %}</span></td>
         <td class="js-status">
-          <span class="badge{{ ' running' if p.last_status == 'running' else '' }}" style="background: {{ p.color }};">{{ p.last_status }}</span>
-          {% if p.last_ended %}<span class="muted">{{ p.last_ended }}</span>{% endif %}
+          {% if p.last_run_id %}
+          <a href="/runs/{{ p.last_run_id }}" class="badge-link" title="View run #{{ p.last_run_id }}">
+            <span class="badge{{ ' running' if p.last_status == 'running' else '' }}" style="background: {{ p.color }};">{{ p.last_status }}</span>
+          </a>
+          {% else %}
+          <span class="badge" style="background: {{ p.color }};">{{ p.last_status }}</span>
+          {% endif %}
+          {% if p.last_ended %}<span class="muted" title="{{ p.last_ended }}">{{ p.last_ended | relative_time }}</span>{% endif %}
         </td>
-        <td><a href="/pipelines/{{ p.name }}">details &rarr;</a></td>
+        <td><a href="/pipelines/{{ p.name }}" class="details-cta">details &rarr;</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No pipelines registered yet. Register one from the CLI (<code>flowctl register &lt;file&gt;</code>) or <a href="/jobs/new">create a simple job</a>.</p>
+  <div class="empty-state-block">
+    <p class="empty-state">No pipelines registered yet.</p>
+    <form method="post" action="/demo/load" style="display:inline;">
+      <button class="btn primary" type="submit">Load demo pipelines</button>
+    </form>
+    <a class="btn" href="/jobs/new">Create a simple job</a>
+    <p class="muted" style="font-size: 12.5px; margin-top: 10px;">
+      "Load demo pipelines" registers the three examples shipped in <code>examples/</code>
+      and runs each once, so there's something to look at immediately. Or register your
+      own from the CLI: <code>flowctl register &lt;file&gt;</code>.
+    </p>
+  </div>
   {% endif %}
 </div>
 
@@ -83,7 +122,7 @@
         <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
         <td>{{ r.pipeline_name }}</td>
         <td><span class="badge" style="background: {{ status_color(r.status) }};">{{ r.status }}</span></td>
-        <td class="muted">{{ r.ended_at }}</td>
+        <td class="muted" title="{{ r.ended_at }}">{{ r.ended_at | relative_time }}</td>
       </tr>
       {% endfor %}
     </tbody>

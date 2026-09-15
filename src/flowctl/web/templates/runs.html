@@ -40,8 +40,8 @@
         <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
         <td><a href="/pipelines/{{ r.pipeline_name }}">{{ r.pipeline_name }}</a></td>
         <td><span class="badge{{ ' running' if r.status == 'running' else '' }}" style="background: {{ r.color }};">{{ r.status }}</span></td>
-        <td class="muted">{{ r.started_at }}</td>
-        <td class="muted">{{ r.ended_at }}</td>
+        <td class="muted" title="{{ r.started_at }}">{{ r.started_at | relative_time }}</td>
+        <td class="muted" title="{{ r.ended_at }}">{{ r.ended_at | relative_time }}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -4,22 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}flowctl{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e14'/%3E%3Ccircle cx='9' cy='10' r='3.4' fill='%2358a6ff'/%3E%3Ccircle cx='23' cy='10' r='3.4' fill='%2358a6ff'/%3E%3Ccircle cx='16' cy='22' r='3.4' fill='%233fb950'/%3E%3Cpath d='M11 13 L15 19 M21 13 L17 19' stroke='%2356626f' stroke-width='1.8'/%3E%3C/svg%3E">
+  <!--
+    Chart.js is vendored locally (static/vendor/chart.umd.min.js) rather
+    than loaded from a CDN, and there is no Google Fonts request either
+    -- both on purpose. A dashboard that's demoed live (conference wifi,
+    a client site with an outbound firewall, offline) shouldn't visibly
+    break or silently lose its chart just because an external host was
+    unreachable. The type stack below falls back to whatever's already
+    on the machine (Segoe UI on Windows, San Francisco on macOS, etc.).
+  -->
+  <script src="/static/vendor/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="dot"></span> flowctl</div>
+      <div class="sidebar-primary-action">
+        <a class="btn primary block" href="/jobs/new">+ New Job</a>
+      </div>
       <nav class="nav">
         <a href="/" class="{{ 'active' if active_page == 'overview' else '' }}">Overview</a>
         <a href="/runs" class="{{ 'active' if active_page == 'runs' else '' }}">All Runs</a>
       </nav>
-      <div class="sidebar-footer">
-        <a class="btn primary block" href="/jobs/new">+ New Job</a>
-      </div>
+      <div class="sidebar-footer">local task orchestrator</div>
     </aside>
     <div class="content">
       {% block content %}{% endblock %}

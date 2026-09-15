@@ -19,6 +19,7 @@ already render, not a separate API surface with its own concerns.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -36,17 +37,64 @@ app = FastAPI(title="flowctl dashboard")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+
+def _relative_time(dt) -> str:
+    """"2 hours ago" instead of a raw ISO timestamp -- a table full of
+    `2026-09-06T02:06:42.000390+00:00` reads like a database dump, not
+    a product. The exact timestamp is still available as a hover
+    tooltip everywhere this is used, so nothing is actually lost.
+    """
+    if dt is None:
+        return "-"
+    now = datetime.now(timezone.utc)
+    seconds = (now - dt).total_seconds()
+    if seconds < 0:
+        seconds = 0
+    if seconds < 5:
+        return "just now"
+    if seconds < 60:
+        return f"{int(seconds)}s ago"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h ago"
+    if seconds < 7 * 86400:
+        return f"{int(seconds // 86400)}d ago"
+    # %-d ("no leading zero") is Linux/macOS-only and raises on Windows
+    # strftime -- %d (zero-padded, e.g. "Sep 06, 2026") works everywhere.
+    return dt.strftime("%b %d, %Y") if hasattr(dt, "strftime") else str(dt)
+
+
+templates.env.filters["relative_time"] = _relative_time
+
 STATUS_COLORS = {
     "success": "#3fb950",
     "failed": "#f85149",
-    "skipped": "#d29922",
+    "skipped": "#7d8b9a",  # neutral gray -- "didn't run because upstream
+                            # failed" is informational, not itself a warning
     "running": "#58a6ff",
 }
 
-# Box/graph layout constants for the SVG dependency diagram.
-_BOX_W, _BOX_H = 150, 46
+# Box/graph layout constants for the SVG dependency diagram. Box width
+# is not fixed -- it's computed per-pipeline from the longest task name
+# (see _build_dag), clamped between these two, so a graph full of short
+# names doesn't waste space and one long name doesn't overflow its box.
+_BOX_W_MIN, _BOX_W_MAX = 130, 210
+_BOX_H = 46
 _COL_GAP, _ROW_GAP = 36, 64
 _PADDING = 24
+_PX_PER_CHAR = 7.4  # rough width of one character in the 12px mono label font
+
+
+def _truncate_label(name: str, max_chars: int) -> str:
+    """Shorten a task name to fit its box, with a full-name tooltip
+    (rendered as an SVG <title>) picking up the slack -- long real-world
+    task names like `generate_dashboard_summary_report` would otherwise
+    overflow a fixed-width box.
+    """
+    if len(name) <= max_chars:
+        return name
+    return name[: max(1, max_chars - 1)] + "…"
 
 
 def _status_color(status: Optional[str]) -> str:
@@ -72,15 +120,20 @@ def _build_dag(pipeline_obj, statuses: dict) -> dict:
     box-to-box lines a real DAG viewer would draw).
     """
     levels = pipeline_obj.execution_plan()
+    all_names = [t.name for level in levels for t in level]
+    longest = max((len(n) for n in all_names), default=8)
+    box_w = max(_BOX_W_MIN, min(int(longest * _PX_PER_CHAR) + 28, _BOX_W_MAX))
+    max_chars = max(4, int((box_w - 20) / _PX_PER_CHAR))
+
     positions: dict[str, tuple[float, float]] = {}
-    row_widths = [len(level) * _BOX_W + max(0, len(level) - 1) * _COL_GAP for level in levels]
+    row_widths = [len(level) * box_w + max(0, len(level) - 1) * _COL_GAP for level in levels]
     max_width = max(row_widths) if row_widths else 0
 
     for i, level in enumerate(levels):
         x_start = (max_width - row_widths[i]) / 2
         y = i * (_BOX_H + _ROW_GAP)
         for idx, t in enumerate(level):
-            positions[t.name] = (x_start + idx * (_BOX_W + _COL_GAP), y)
+            positions[t.name] = (x_start + idx * (box_w + _COL_GAP), y)
 
     nodes = []
     for level in levels:
@@ -90,9 +143,10 @@ def _build_dag(pipeline_obj, statuses: dict) -> dict:
             nodes.append(
                 {
                     "name": t.name,
+                    "label": _truncate_label(t.name, max_chars),
                     "x": x + _PADDING,
                     "y": y + _PADDING,
-                    "w": _BOX_W,
+                    "w": box_w,
                     "h": _BOX_H,
                     "status": status,
                     "color": _status_color(status),
@@ -106,9 +160,9 @@ def _build_dag(pipeline_obj, statuses: dict) -> dict:
             x2, y2 = positions[t.name]
             edges.append(
                 {
-                    "x1": x1 + _BOX_W / 2 + _PADDING,
+                    "x1": x1 + box_w / 2 + _PADDING,
                     "y1": y1 + _BOX_H + _PADDING,
-                    "x2": x2 + _BOX_W / 2 + _PADDING,
+                    "x2": x2 + box_w / 2 + _PADDING,
                     "y2": y2 + _PADDING,
                 }
             )
@@ -132,6 +186,11 @@ def _pipeline_summary(session, p) -> dict:
         "kind": "code" if p.load_ref else "linear job",
         "last_status": last.status if last else "never run",
         "last_ended": last.ended_at if last else None,
+        # The homepage badge links straight to this specific run (not
+        # just the pipeline overview) when there's one to point at --
+        # a failed badge should be one click from the actual error,
+        # not a detour through the pipeline page first.
+        "last_run_id": last.id if last else None,
         "color": _status_color(last.status if last else None),
         "recent_dots": [{"status": r.status, "color": _status_color(r.status)} for r in reversed(recent)],
     }
@@ -165,6 +224,13 @@ def index(request: Request):
             "active_page": "overview",
         },
     )
+
+
+@app.post("/demo/load")
+def load_demo():
+    with app_layer.get_session() as session:
+        app_layer.load_demo_content(session)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/api/pipelines")
@@ -220,6 +286,16 @@ def pipeline_detail(request: Request, name: str, error: Optional[str] = None):
             for r in runs
         ]
 
+        last_run_summary = None
+        if runs:
+            last = runs[0]
+            last_run_summary = {
+                "duration": (last.ended_at - last.started_at).total_seconds(),
+                "task_count": len(last.task_results),
+                "status": last.status,
+                "color": _status_color(last.status),
+            }
+
     return templates.TemplateResponse(
         request,
         "pipeline_detail.html",
@@ -228,6 +304,7 @@ def pipeline_detail(request: Request, name: str, error: Optional[str] = None):
             "dag": dag,
             "task_details": task_details,
             "runs": run_rows,
+            "last_run_summary": last_run_summary,
             "error": error,
         },
     )
@@ -265,9 +342,12 @@ def api_pipeline_detail(name: str):
 
 @app.post("/pipelines/{name}/run")
 def run_pipeline_now(name: str):
+    # Runs in the background (see run_registered_in_background's
+    # docstring) so this redirect happens right away and the dashboard's
+    # live poll can actually show "running" instead of the whole request
+    # blocking until the pipeline is already finished.
     try:
-        with app_layer.get_session() as session:
-            app_layer.run_registered(name, session)
+        app_layer.run_registered_in_background(name)
     except ValueError as exc:
         return _redirect_with_error(f"/pipelines/{quote(name)}", exc)
     return RedirectResponse(url=f"/pipelines/{quote(name)}", status_code=303)

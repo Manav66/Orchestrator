@@ -5,7 +5,18 @@
 <a class="back-link" href="/">&larr; all pipelines</a>
 
 <div class="topbar">
-  <div class="page-title">{{ pipeline.name }} <span class="kind-tag">{{ "code-defined" if pipeline.load_ref else "linear job" }}</span></div>
+  <div>
+    <div class="page-title">{{ pipeline.name }} <span class="kind-tag">{{ "code-defined" if pipeline.load_ref else "linear job" }}</span></div>
+    {% if last_run_summary %}
+    <div class="page-subtitle">
+      Last run
+      <span class="badge{{ ' running' if last_run_summary.status == 'running' else '' }}" style="background: {{ last_run_summary.color }};">{{ last_run_summary.status }}</span>
+      {{ "%.2f"|format(last_run_summary.duration) }}s &middot; {{ last_run_summary.task_count }} task{{ "s" if last_run_summary.task_count != 1 else "" }}
+    </div>
+    {% else %}
+    <div class="page-subtitle">Never run yet</div>
+    {% endif %}
+  </div>
   <div class="live-indicator"><span class="pulse"></span> live</div>
 </div>
 
@@ -13,8 +24,8 @@
 
 <div class="panel">
   <div style="display:flex; gap:10px; margin-bottom: 18px;">
-    <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/run">
-      <button class="btn primary" type="submit">Run now</button>
+    <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/run" id="run-now-form">
+      <button class="btn primary" type="submit" title="Run now (shortcut: r)">Run now</button>
     </form>
     <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/toggle">
       <button class="btn {{ 'danger' if pipeline.enabled else '' }}" type="submit">
@@ -47,9 +58,10 @@
         </marker>
       </defs>
       {% for n in dag.nodes %}
-      <g class="dag-node" data-task="{{ n.name }}" tabindex="0" role="button">
+      <g class="dag-node" data-task="{{ n.name }}" tabindex="0" role="button" aria-label="{{ n.name }} -- {{ n.status }}">
+        <title>{{ n.name }} ({{ n.status }})</title>
         <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ n.w }}" height="{{ n.h }}" rx="8" fill="{{ n.color }}"></rect>
-        <text x="{{ n.x + n.w/2 }}" y="{{ n.y + n.h/2 + 4 }}" text-anchor="middle">{{ n.name }}</text>
+        <text x="{{ n.x + n.w/2 }}" y="{{ n.y + n.h/2 + 4 }}" text-anchor="middle">{{ n.label }}</text>
       </g>
       {% endfor %}
     </svg>
@@ -73,7 +85,10 @@
     </div>
     <div class="task-panel-section" id="task-panel-error-wrap" hidden>
       <div class="task-panel-label">Error</div>
-      <div class="error-text task-panel-value" id="task-panel-error"></div>
+      <div class="error-block">
+        <div class="error-text mono task-panel-value" id="task-panel-error"></div>
+        <button class="copy-btn" type="button" id="task-panel-error-copy" title="Copy error text">Copy</button>
+      </div>
     </div>
     <p class="empty-state" id="task-panel-empty" hidden>This task hasn't run yet -- no detail to show.</p>
   </div>
@@ -89,14 +104,14 @@
       <tr>
         <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
         <td><span class="badge{{ ' running' if r.status == 'running' else '' }}" style="background: {{ r.color }};">{{ r.status }}</span></td>
-        <td class="muted">{{ r.started_at }}</td>
-        <td class="muted">{{ r.ended_at }}</td>
+        <td class="muted" title="{{ r.started_at }}">{{ r.started_at | relative_time }}</td>
+        <td class="muted" title="{{ r.ended_at }}">{{ r.ended_at | relative_time }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty-state">No runs yet.</p>
+  <p class="empty-state">No runs yet -- click <strong>Run now</strong> above to kick one off.</p>
   {% endif %}
 </div>
 

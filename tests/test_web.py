@@ -2,6 +2,8 @@
 Each test points FLOWCTL_DB_PATH at a fresh temp SQLite file, same
 pattern as test_cli.py, so tests never touch a real ~/.flowctl/flowctl.db.
 """
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -63,7 +65,19 @@ def test_pipeline_detail_shows_dag_and_allows_running():
     run_response = client.post("/pipelines/job_a/run", follow_redirects=False)
     assert run_response.status_code == 303
 
+    # "Run now" executes in a background thread on purpose (so the
+    # dashboard's live poll can show running -> success/failed instead
+    # of the request blocking until the run is already done) -- so the
+    # very next request may briefly still show "running" for a fast
+    # pipeline. Poll briefly rather than asserting instant completion.
+    deadline = time.time() + 3
     detail_after = client.get("/pipelines/job_a")
+    while "No runs yet" in detail_after.text or "running" in detail_after.text.lower():
+        if time.time() > deadline:
+            break
+        time.sleep(0.05)
+        detail_after = client.get("/pipelines/job_a")
+
     assert "No runs yet" not in detail_after.text
     assert "success" in detail_after.text
 
@@ -98,11 +112,25 @@ def test_run_detail_page_shows_task_results():
     client.post("/jobs/new", data={"name": "job_d", "commands": "echo hello_world", "schedule": ""})
     client.post("/pipelines/job_d/run")
 
+    # Run now is asynchronous (see the comment in the earlier DAG test)
+    # -- wait for the background thread to finish rather than assuming
+    # the run is already recorded the instant the request returns.
+    deadline = time.time() + 3
     detail = client.get("/pipelines/job_d")
+    while "#1" not in detail.text:
+        if time.time() > deadline:
+            break
+        time.sleep(0.05)
+        detail = client.get("/pipelines/job_d")
     assert "#1" in detail.text  # first run id linked in the history table
 
     run_detail = client.get("/runs/1")
     assert run_detail.status_code == 200
+    while "hello_world" not in run_detail.text:
+        if time.time() > deadline:
+            break
+        time.sleep(0.05)
+        run_detail = client.get("/runs/1")
     assert "hello_world" in run_detail.text
     assert "step_1" in run_detail.text
 

@@ -118,6 +118,19 @@ flowctl status
 flowctl logs 1
 ```
 
+There's a second, more substantial example worth a look:
+`examples/log_analysis_pipeline.py` generates a realistic web-server access
+log, then fans out into three tasks that do genuine analysis -- regex log
+parsing, real statistical outlier detection (flagging IPs more than two
+standard deviations above the mean request rate, which correctly catches a
+simulated brute-forcer and a scraper without their IPs being hardcoded
+anywhere), and per-endpoint latency percentiles -- before a final task merges
+all three into a written Markdown report:
+
+```bash
+flowctl run examples/log_analysis_pipeline.py
+```
+
 Start the scheduler so registered pipelines fire automatically on their cron
 schedule:
 
@@ -145,11 +158,12 @@ filtering.
 
 ### Loading pre-populated demo data
 
-A ready-made SQLite database with two registered code pipelines
-(`examples/sample_pipeline.py`, `examples/data_pipeline.py`) and two
-dashboard-created linear jobs, all with two weeks of realistic mixed
-success/failure run history, ships in `demo_data/flowctl_demo.db`. To
-explore the dashboard without generating your own history first:
+A ready-made SQLite database with three registered code pipelines
+(`examples/sample_pipeline.py`, `examples/data_pipeline.py`,
+`examples/log_analysis_pipeline.py`) and two dashboard-created linear
+jobs, all with two weeks of realistic mixed success/failure run
+history, ships in `demo_data/flowctl_demo.db`. To explore the
+dashboard without generating your own history first:
 
 ```bash
 cp demo_data/flowctl_demo.db ~/.flowctl/flowctl.db   # or set FLOWCTL_DB_PATH

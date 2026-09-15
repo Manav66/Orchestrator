@@ -76,6 +76,11 @@ def test_downstream_task_is_skipped_when_dependency_fails():
     assert result.status == PipelineStatus.FAILED
     assert result.task_outcomes["upstream_fails"].status == TaskStatus.FAILED
     assert result.task_outcomes["downstream"].status == TaskStatus.SKIPPED
+    # The skip reason should name the actual blocking task, not just a
+    # generic "something upstream failed" -- this is what lets the
+    # dashboard answer "why was this skipped?" directly on click.
+    assert "upstream_fails" in result.task_outcomes["downstream"].error
+    assert "failed" in result.task_outcomes["downstream"].error
 
 
 def test_independent_tasks_actually_run_concurrently():

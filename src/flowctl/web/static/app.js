@@ -14,10 +14,49 @@ function fcFmtTime(iso) {
   return d.toLocaleString();
 }
 
+/* Mirrors _relative_time() in web/app.py so JS-updated (polled) content
+   reads the same as the initial server-rendered page ("2h ago" instead
+   of a full timestamp), rather than the two disagreeing after a poll
+   tick. Wrapped in a span with the exact time as a title tooltip. */
+function fcFmtRelative(iso) {
+  if (!iso) return "-";
+  const then = new Date(iso).getTime();
+  const seconds = Math.max(0, (Date.now() - then) / 1000);
+  let text;
+  if (seconds < 5) text = "just now";
+  else if (seconds < 60) text = `${Math.floor(seconds)}s ago`;
+  else if (seconds < 3600) text = `${Math.floor(seconds / 60)}m ago`;
+  else if (seconds < 86400) text = `${Math.floor(seconds / 3600)}h ago`;
+  else if (seconds < 7 * 86400) text = `${Math.floor(seconds / 86400)}d ago`;
+  else text = new Date(iso).toLocaleDateString();
+  return `<span title="${iso}">${text}</span>`;
+}
+
 function fcBadge(status, color, extraClass) {
   const cls = status === "running" ? "badge running" : "badge";
   return `<span class="${cls}${extraClass ? " " + extraClass : ""}" style="background:${color}">${status}</span>`;
 }
+
+/* ---------------- Copy-to-clipboard (error text) ---------------- */
+/* Delegated on the document so it works for both statically-rendered
+   copy buttons (run detail page) and the task-detail panel's, whose
+   content is refreshed live by polling. */
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".copy-btn");
+  if (!btn) return;
+  const text = btn.dataset.copyText !== undefined
+    ? btn.dataset.copyText
+    : (document.getElementById("task-panel-error")?.textContent || "");
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  }).catch(() => {
+    /* clipboard API unavailable (e.g. insecure context) -- fail silently */
+  });
+});
 
 /* ---------------- Homepage polling ---------------- */
 
@@ -35,9 +74,11 @@ function fcInitHomepage() {
         if (!row) continue;
         const statusCell = row.querySelector(".js-status");
         if (statusCell) {
+          const badgeHtml = p.last_run_id
+            ? `<a href="/runs/${p.last_run_id}" class="badge-link" title="View run #${p.last_run_id}">${fcBadge(p.last_status, p.color)}</a>`
+            : fcBadge(p.last_status, p.color);
           statusCell.innerHTML =
-            fcBadge(p.last_status, p.color) +
-            (p.last_ended ? ` <span class="muted">${fcFmtTime(p.last_ended)}</span>` : "");
+            badgeHtml + (p.last_ended ? ` <span class="muted">${fcFmtRelative(p.last_ended)}</span>` : "");
         }
         const dotsCell = row.querySelector(".js-dots");
         if (dotsCell) {
@@ -138,6 +179,26 @@ function fcInitPipelineDetail(pipelineName, initialTaskDetails) {
 
   if (closeBtn) closeBtn.addEventListener("click", closePanel);
 
+  // Keyboard: Esc closes the open task panel, "r" triggers Run now --
+  // both ignored while typing in a text field/textarea so this doesn't
+  // fight with editing the schedule input.
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    const typing = tag === "INPUT" || tag === "TEXTAREA";
+
+    if (e.key === "Escape" && !panel.hidden) {
+      closePanel();
+      return;
+    }
+    if (!typing && (e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey) {
+      const runForm = document.getElementById("run-now-form");
+      if (runForm) {
+        e.preventDefault();
+        runForm.requestSubmit();
+      }
+    }
+  });
+
   async function refresh() {
     try {
       const res = await fetch(`/api/pipelines/${encodeURIComponent(pipelineName)}`);
@@ -162,8 +223,8 @@ function fcInitPipelineDetail(pipelineName, initialTaskDetails) {
             (r) => `<tr>
               <td><a href="/runs/${r.id}">#${r.id}</a></td>
               <td>${fcBadge(r.status, r.color)}</td>
-              <td class="muted">${fcFmtTime(r.started_at)}</td>
-              <td class="muted">${fcFmtTime(r.ended_at)}</td>
+              <td class="muted">${fcFmtRelative(r.started_at)}</td>
+              <td class="muted">${fcFmtRelative(r.ended_at)}</td>
             </tr>`
           )
           .join("");
@@ -196,8 +257,8 @@ function fcInitRunsPage(pipelineFilter, statusFilter) {
             <td><a href="/runs/${r.id}">#${r.id}</a></td>
             <td><a href="/pipelines/${encodeURIComponent(r.pipeline_name)}">${r.pipeline_name}</a></td>
             <td>${fcBadge(r.status, r.color)}</td>
-            <td class="muted">${fcFmtTime(r.started_at)}</td>
-            <td class="muted">${fcFmtTime(r.ended_at)}</td>
+            <td class="muted">${fcFmtRelative(r.started_at)}</td>
+            <td class="muted">${fcFmtRelative(r.ended_at)}</td>
           </tr>`
         )
         .join("");
