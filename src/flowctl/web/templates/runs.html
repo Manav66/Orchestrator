@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}flowctl -- all runs{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="page-title">All Runs</div>
+  <div class="live-indicator"><span class="pulse"></span> live</div>
+</div>
+
+<div class="panel">
+  <form class="filter-bar" method="get" action="/runs">
+    <div class="field">
+      <label>Pipeline</label>
+      <select name="pipeline">
+        <option value="">All pipelines</option>
+        {% for name in pipeline_names %}
+        <option value="{{ name }}" {{ "selected" if name == selected_pipeline else "" }}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select name="status">
+        <option value="">All statuses</option>
+        {% for s in ["success", "failed", "running"] %}
+        <option value="{{ s }}" {{ "selected" if s == selected_status else "" }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+    {% if selected_pipeline or selected_status %}<a class="btn ghost" href="/runs">Clear</a>{% endif %}
+  </form>
+
+  {% if runs %}
+  <table>
+    <thead><tr><th>Run</th><th>Pipeline</th><th>Status</th><th>Started</th><th>Ended</th></tr></thead>
+    <tbody id="all-runs-body">
+      {% for r in runs %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
+        <td><a href="/pipelines/{{ r.pipeline_name }}">{{ r.pipeline_name }}</a></td>
+        <td><span class="badge{{ ' running' if r.status == 'running' else '' }}" style="background: {{ r.color }};">{{ r.status }}</span></td>
+        <td class="muted">{{ r.started_at }}</td>
+        <td class="muted">{{ r.ended_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No runs match this filter.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  fcInitRunsPage({{ selected_pipeline | tojson }}, {{ selected_status | tojson }});
+</script>
+{% endblock %}

@@ -2,26 +2,45 @@
 {% block title %}flowctl -- run #{{ run.id }}{% endblock %}
 {% block content %}
 
-<p><a href="/pipelines/{{ run.pipeline_name }}">&larr; {{ run.pipeline_name }}</a></p>
-<h2>Run #{{ run.id }} <span class="badge" style="background: {{ run.color }};">{{ run.status }}</span></h2>
-<p class="muted">started {{ run.started_at }} &mdash; ended {{ run.ended_at }}</p>
+<a class="back-link" href="/pipelines/{{ run.pipeline_name }}">&larr; {{ run.pipeline_name }}</a>
 
-<table>
-  <thead><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Duration</th><th>Result / error</th></tr></thead>
-  <tbody>
-    {% for t in tasks %}
-    <tr>
-      <td>{{ t.name }}</td>
-      <td><span class="badge" style="background: {{ t.color }};">{{ t.status }}</span></td>
-      <td>{{ t.attempts }}</td>
-      <td>{{ "%.3f"|format(t.duration) }}s</td>
-      <td>
-        {% if t.result %}<code>{{ t.result }}</code>{% endif %}
-        {% if t.error %}<div style="color: #cf222e;">{{ t.error }}</div>{% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="topbar">
+  <div class="page-title">Run #{{ run.id }} <span class="badge{{ ' running' if run.status == 'running' else '' }}" style="background: {{ run.color }};">{{ run.status }}</span></div>
+</div>
+<p class="muted" style="margin-top: -10px;">started {{ run.started_at }} &mdash; ended {{ run.ended_at }} &mdash; total {{ "%.3f"|format(run.duration) }}s</p>
+
+<div class="panel">
+  <h2>Timeline</h2>
+  <div class="subtitle">Each bar's position and width reflect exactly when that task ran relative to the whole run -- tasks stacked at the same horizontal offset ran in parallel.</div>
+  {% for t in tasks %}
+  <div class="gantt-row">
+    <div class="gantt-label">{{ t.name }}</div>
+    <div class="gantt-track">
+      <div class="gantt-bar" style="left: {{ t.offset_pct }}%; width: {{ t.width_pct }}%; background: {{ t.color }};" title="{{ t.name }}: {{ '%.3f'|format(t.duration) }}s"></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="panel">
+  <h2>Task detail</h2>
+  <table>
+    <thead><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Duration</th><th>Result / error</th></tr></thead>
+    <tbody>
+      {% for t in tasks %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td><span class="badge" style="background: {{ t.color }};">{{ t.status }}</span></td>
+        <td>{{ t.attempts }}</td>
+        <td class="mono">{{ "%.3f"|format(t.duration) }}s</td>
+        <td>
+          {% if t.result %}<span class="result-text mono">{{ t.result }}</span>{% endif %}
+          {% if t.error %}<div class="error-text">{{ t.error }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
 {% endblock %}

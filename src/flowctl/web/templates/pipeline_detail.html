@@ -2,60 +2,93 @@
 {% block title %}flowctl -- {{ pipeline.name }}{% endblock %}
 {% block content %}
 
-<p><a href="/">&larr; all pipelines</a></p>
-<h2>{{ pipeline.name }}
-  <span class="muted" style="font-size: 14px; font-weight: normal;">
-    ({{ "code-defined" if pipeline.load_ref else "linear job" }})
-  </span>
-</h2>
+<a class="back-link" href="/">&larr; all pipelines</a>
+
+<div class="topbar">
+  <div class="page-title">{{ pipeline.name }} <span class="kind-tag">{{ "code-defined" if pipeline.load_ref else "linear job" }}</span></div>
+  <div class="live-indicator"><span class="pulse"></span> live</div>
+</div>
 
 {% if error %}<div class="error-banner">{{ error }}</div>{% endif %}
 
-<p>
-  <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/run">
-    <button class="button primary" type="submit">Run now</button>
-  </form>
-  <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/toggle">
-    <button class="button {{ 'danger' if pipeline.enabled else '' }}" type="submit">
-      {{ "Pause" if pipeline.enabled else "Resume" }}
-    </button>
-  </form>
-</p>
-
-<section>
-  <h2>Schedule</h2>
-  <form method="post" action="/pipelines/{{ pipeline.name }}/schedule">
-    <div class="field" style="max-width: 320px;">
-      <input type="text" name="schedule" value="{{ pipeline.schedule or '' }}" placeholder="0 6 * * *  (blank = no schedule)">
-      <div class="hint">Status: {{ "enabled" if pipeline.enabled else "paused -- won't fire even if scheduled" }}</div>
-    </div>
-    <button class="button" type="submit">Save schedule</button>
-  </form>
-</section>
-
-<section>
-  <h2>Task graph</h2>
-  <p class="muted">Colored by each task's status in the most recent run. Boxes in the same row have no dependency on each other and run in parallel.</p>
-  {% for level in diagram_levels %}
-  <div class="dag-level">
-    {% for t in level %}
-    <div class="dag-box" style="background: {{ t.color }};">{{ t.name }}</div>
-    {% endfor %}
+<div class="panel">
+  <div style="display:flex; gap:10px; margin-bottom: 18px;">
+    <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/run">
+      <button class="btn primary" type="submit">Run now</button>
+    </form>
+    <form class="inline" method="post" action="/pipelines/{{ pipeline.name }}/toggle">
+      <button class="btn {{ 'danger' if pipeline.enabled else '' }}" type="submit">
+        {{ "Pause" if pipeline.enabled else "Resume" }}
+      </button>
+    </form>
   </div>
-  {% if not loop.last %}<div class="dag-arrow">&darr;</div>{% endif %}
-  {% endfor %}
-</section>
 
-<section>
+  <form method="post" action="/pipelines/{{ pipeline.name }}/schedule" style="display:flex; gap:10px; align-items:flex-end;">
+    <div class="field" style="max-width: 260px; margin-bottom: 0;">
+      <label>Schedule</label>
+      <input type="text" name="schedule" value="{{ pipeline.schedule or '' }}" placeholder="0 6 * * *  (blank = none)">
+    </div>
+    <button class="btn" type="submit">Save</button>
+    <span class="muted" style="font-size: 12.5px;">{{ "enabled" if pipeline.enabled else "paused -- won't fire even if scheduled" }}</span>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Task graph</h2>
+  <div class="subtitle">Colored by each task's status in the most recent run. Boxes on the same row have no dependency on each other and run in parallel.</div>
+  <div class="dag-svg-wrap">
+    <svg width="{{ dag.width }}" height="{{ dag.height }}">
+      {% for e in dag.edges %}
+      <line class="dag-edge" x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}" marker-end="url(#arrow)"></line>
+      {% endfor %}
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#56626f"></path>
+        </marker>
+      </defs>
+      {% for n in dag.nodes %}
+      <g class="dag-node" data-task="{{ n.name }}" tabindex="0" role="button">
+        <rect x="{{ n.x }}" y="{{ n.y }}" width="{{ n.w }}" height="{{ n.h }}" rx="8" fill="{{ n.color }}"></rect>
+        <text x="{{ n.x + n.w/2 }}" y="{{ n.y + n.h/2 + 4 }}" text-anchor="middle">{{ n.name }}</text>
+      </g>
+      {% endfor %}
+    </svg>
+  </div>
+</div>
+
+<div class="task-panel" id="task-panel" hidden>
+  <div class="task-panel-inner">
+    <button class="task-panel-close" id="task-panel-close" type="button" aria-label="Close">&times;</button>
+    <div class="task-panel-title" id="task-panel-title">-</div>
+    <div class="task-panel-badge" id="task-panel-badge"></div>
+    <dl class="task-panel-fields">
+      <dt>Attempts</dt><dd id="task-panel-attempts">-</dd>
+      <dt>Duration</dt><dd id="task-panel-duration">-</dd>
+      <dt>Started</dt><dd id="task-panel-started">-</dd>
+      <dt>Ended</dt><dd id="task-panel-ended">-</dd>
+    </dl>
+    <div class="task-panel-section" id="task-panel-result-wrap" hidden>
+      <div class="task-panel-label">Result</div>
+      <div class="mono task-panel-value" id="task-panel-result"></div>
+    </div>
+    <div class="task-panel-section" id="task-panel-error-wrap" hidden>
+      <div class="task-panel-label">Error</div>
+      <div class="error-text task-panel-value" id="task-panel-error"></div>
+    </div>
+    <p class="empty-state" id="task-panel-empty" hidden>This task hasn't run yet -- no detail to show.</p>
+  </div>
+</div>
+
+<div class="panel">
   <h2>Run history</h2>
   {% if runs %}
   <table>
     <thead><tr><th>Run</th><th>Status</th><th>Started</th><th>Ended</th></tr></thead>
-    <tbody>
+    <tbody id="run-history-body">
       {% for r in runs %}
       <tr>
         <td><a href="/runs/{{ r.id }}">#{{ r.id }}</a></td>
-        <td><span class="badge" style="background: {{ r.color }};">{{ r.status }}</span></td>
+        <td><span class="badge{{ ' running' if r.status == 'running' else '' }}" style="background: {{ r.color }};">{{ r.status }}</span></td>
         <td class="muted">{{ r.started_at }}</td>
         <td class="muted">{{ r.ended_at }}</td>
       </tr>
@@ -63,8 +96,14 @@
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No runs yet.</p>
+  <p class="empty-state">No runs yet.</p>
   {% endif %}
-</section>
+</div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  fcInitPipelineDetail({{ pipeline.name | tojson }}, {{ task_details | tojson }});
+</script>
 {% endblock %}

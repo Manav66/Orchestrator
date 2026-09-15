@@ -16,7 +16,9 @@ never do.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Iterator, List, Optional
 
 from croniter import croniter
@@ -71,15 +73,31 @@ def run_and_record(pipeline: Pipeline, session: Session, *, max_workers: int = 4
     This runs regardless of whether `pipeline` has ever been
     registered -- registration and running are independent (see
     `register` below). This function commits its own session.
-    """
-    result: PipelineResult = Executor(max_workers=max_workers).execute(pipeline)
 
+    A Run row is written with status "running" *before* execution
+    starts, then updated with the final status/timing/task results
+    once execution finishes. Without this, the database would only
+    ever contain terminal states (success/failed), so a concurrent
+    request (e.g. the dashboard auto-refreshing in another browser
+    tab) could never actually observe a pipeline mid-run -- "live"
+    status would be a lie. The intermediate commit is what makes it real.
+    """
+    started_at = datetime.now(timezone.utc)
     run = Run(
         pipeline_name=pipeline.name,
-        status=result.status.value,
-        started_at=result.started_at,
-        ended_at=result.ended_at,
+        status="running",
+        started_at=started_at,
+        ended_at=started_at,
     )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+
+    result: PipelineResult = Executor(max_workers=max_workers).execute(pipeline)
+
+    run.status = result.status.value
+    run.started_at = result.started_at
+    run.ended_at = result.ended_at
     for task_name, outcome in result.task_outcomes.items():
         run.task_results.append(
             TaskResult(
@@ -93,7 +111,6 @@ def run_and_record(pipeline: Pipeline, session: Session, *, max_workers: int = 4
             )
         )
 
-    session.add(run)
     session.commit()
     session.refresh(run)
     return run
@@ -303,15 +320,53 @@ def latest_task_statuses(session: Session, pipeline_name: str) -> dict[str, str]
     return {tr.task_name: tr.status for tr in recent[0].task_results}
 
 
+def latest_task_details(session: Session, pipeline_name: str) -> dict[str, dict]:
+    """task_name -> rich detail dict, from the most recent run of a
+    pipeline: status, attempt count, duration, result repr, and error
+    text. Powers the click-to-inspect task panel on the dashboard's DAG
+    view. Empty dict if the pipeline has never been run. Read-only.
+
+    Values are plain JSON-safe types (str/float/int/None) on purpose --
+    both the initial page render (via Jinja's `tojson`) and the
+    /api/pipelines/{name} polling endpoint hand this straight to JSON
+    without any datetime-aware encoding step.
+    """
+    recent = list_runs(session, pipeline_name=pipeline_name, limit=1)
+    if not recent:
+        return {}
+    run = recent[0]
+    details = {}
+    for tr in run.task_results:
+        duration = None
+        if tr.started_at is not None and tr.ended_at is not None:
+            duration = (tr.ended_at - tr.started_at).total_seconds()
+        details[tr.task_name] = {
+            "status": tr.status,
+            "attempts": tr.attempts,
+            "duration": duration,
+            "result": tr.result_repr,
+            "error": tr.error,
+            "started_at": tr.started_at.isoformat() if tr.started_at else None,
+            "ended_at": tr.ended_at.isoformat() if tr.ended_at else None,
+            "run_id": run.id,
+        }
+    return details
+
+
 def list_pipelines(session: Session) -> list[PipelineModel]:
     """All registered pipelines, alphabetically. Read-only, no commit."""
     return session.query(PipelineModel).order_by(PipelineModel.name).all()
 
 
 def list_runs(
-    session: Session, *, pipeline_name: Optional[str] = None, limit: int = 20
+    session: Session,
+    *,
+    pipeline_name: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 20,
 ) -> list[Run]:
-    """Most recent runs, optionally filtered to one pipeline name.
+    """Most recent runs, optionally filtered to one pipeline name and/or
+    one status ("success" / "failed" / "running").
 
     Includes ad-hoc runs (pipelines that were never registered), since
     Run rows are keyed by plain pipeline_name, not a foreign key into
@@ -320,9 +375,78 @@ def list_runs(
     query = session.query(Run).order_by(Run.id.desc())
     if pipeline_name is not None:
         query = query.filter_by(pipeline_name=pipeline_name)
+    if status is not None:
+        query = query.filter_by(status=status)
     return query.limit(limit).all()
 
 
 def get_run(session: Session, run_id: int) -> Optional[Run]:
     """Fetch a single run (with its task results) by id. Read-only."""
     return session.get(Run, run_id)
+
+
+def dashboard_stats(session: Session) -> dict:
+    """Summary numbers for the homepage stat cards. Read-only.
+
+    success_rate is computed over the most recent 200 completed runs
+    (running excluded) so one bad day doesn't get permanently buried
+    by months of unrelated history, but also isn't skewed by a single
+    run still in progress.
+    """
+    total_pipelines = session.query(PipelineModel).count()
+    enabled_pipelines = session.query(PipelineModel).filter_by(enabled=True).count()
+    total_runs = session.query(Run).count()
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    runs_today = session.query(Run).filter(Run.started_at >= today_start).count()
+
+    recent_completed = (
+        session.query(Run)
+        .filter(Run.status.in_(["success", "failed"]))
+        .order_by(Run.id.desc())
+        .limit(200)
+        .all()
+    )
+    if recent_completed:
+        success_count = sum(1 for r in recent_completed if r.status == "success")
+        success_rate = round(100 * success_count / len(recent_completed), 1)
+    else:
+        success_rate = None
+
+    currently_running = session.query(Run).filter_by(status="running").count()
+
+    return {
+        "total_pipelines": total_pipelines,
+        "enabled_pipelines": enabled_pipelines,
+        "total_runs": total_runs,
+        "runs_today": runs_today,
+        "success_rate": success_rate,
+        "currently_running": currently_running,
+    }
+
+
+def daily_run_counts(session: Session, *, days: int = 14) -> list[dict]:
+    """Per-day success/failed run counts for the last `days` days
+    (oldest first), for the homepage activity chart. Read-only.
+
+    Days with zero runs are still included with zero counts, so the
+    chart's x-axis is a continuous timeline rather than skipping gaps.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
+    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    runs = session.query(Run).filter(Run.started_at >= since).all()
+
+    buckets: dict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failed": 0})
+    for r in runs:
+        if r.status not in ("success", "failed"):
+            continue
+        day_key = r.started_at.date().isoformat()
+        buckets[day_key][r.status] += 1
+
+    result = []
+    for i in range(days):
+        day = (since + timedelta(days=i)).date().isoformat()
+        counts = buckets.get(day, {"success": 0, "failed": 0})
+        result.append({"date": day, "success": counts["success"], "failed": counts["failed"]})
+    return result

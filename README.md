@@ -133,9 +133,28 @@ flowctl dashboard start
 ```
 
 From the dashboard you can see every registered pipeline's status at a
-glance, click into one to see its task graph and run history, trigger a run,
+glance (with live-updating badges -- no manual refresh needed while a run is
+in progress), click into one to see its real dependency graph (rendered as
+an SVG with actual connector lines, not just a box list) and run history
+with a Gantt-style timeline of parallel task execution, trigger a run,
 pause/resume it, edit its schedule, and create simple linear jobs without
-writing any code.
+writing any code. The homepage also shows overall stats (success rate,
+runs today, currently-running count) and a 14-day activity chart, and
+there's a dedicated `/runs` view across every pipeline with status
+filtering.
+
+### Loading pre-populated demo data
+
+A ready-made SQLite database with two registered code pipelines
+(`examples/sample_pipeline.py`, `examples/data_pipeline.py`) and two
+dashboard-created linear jobs, all with two weeks of realistic mixed
+success/failure run history, ships in `demo_data/flowctl_demo.db`. To
+explore the dashboard without generating your own history first:
+
+```bash
+cp demo_data/flowctl_demo.db ~/.flowctl/flowctl.db   # or set FLOWCTL_DB_PATH
+flowctl dashboard start
+```
 
 ## Writing your own pipeline
 

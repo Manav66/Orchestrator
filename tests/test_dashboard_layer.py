@@ -10,6 +10,7 @@ import pytest
 from flowctl.app.application import (
     create_linear_job,
     get_pipeline,
+    latest_task_details,
     latest_task_statuses,
     load_pipeline_for_row,
     register,
@@ -163,3 +164,28 @@ def test_latest_task_statuses_empty_until_first_run_then_reflects_it():
 
     statuses = latest_task_statuses(session, "status_job")
     assert statuses == {"step_1": "success", "step_2": "success"}
+
+
+def test_latest_task_details_empty_until_first_run_then_has_rich_fields():
+    session = _fresh_session()
+    create_linear_job("detail_job", ["echo one", "echo two"], session)
+
+    assert latest_task_details(session, "detail_job") == {}
+
+    run_registered("detail_job", session)
+
+    details = latest_task_details(session, "detail_job")
+    assert set(details.keys()) == {"step_1", "step_2"}
+    for task_name, info in details.items():
+        assert info["status"] == "success"
+        assert info["attempts"] == 1
+        assert isinstance(info["duration"], float) and info["duration"] >= 0
+        assert info["error"] is None
+        assert info["started_at"] is not None
+        assert info["ended_at"] is not None
+        assert info["run_id"] is not None
+        # JSON-safety: every value must already be a plain type, not a
+        # datetime -- this is what lets both Jinja's `tojson` filter and
+        # the raw FastAPI JSON route hand these straight to json.dumps.
+        for value in info.values():
+            assert value is None or isinstance(value, (str, int, float))

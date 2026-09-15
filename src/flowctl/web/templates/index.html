@@ -1,8 +1,41 @@
 {% extends "base.html" %}
-{% block title %}flowctl -- pipelines{% endblock %}
+{% block title %}flowctl -- overview{% endblock %}
 {% block content %}
 
-<section>
+<div class="topbar">
+  <div class="page-title">Overview</div>
+  <div class="live-indicator"><span class="pulse"></span> live</div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="label">Pipelines</div>
+    <div class="value">{{ stats.total_pipelines }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Enabled</div>
+    <div class="value">{{ stats.enabled_pipelines }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Runs today</div>
+    <div class="value accent">{{ stats.runs_today }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Success rate</div>
+    <div class="value good">{{ stats.success_rate if stats.success_rate is not none else "-" }}{{ "%" if stats.success_rate is not none else "" }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Running now</div>
+    <div class="value {{ 'accent' if stats.currently_running else '' }}">{{ stats.currently_running }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Activity, last 14 days</h2>
+  <div class="chart-wrap"><canvas id="activity-chart"></canvas></div>
+</div>
+
+<div class="panel">
   <h2>Registered pipelines</h2>
   {% if pipelines %}
   <table>
@@ -12,34 +45,36 @@
         <th>Kind</th>
         <th>Schedule</th>
         <th>Enabled</th>
+        <th>Recent</th>
         <th>Last run</th>
         <th></th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="pipelines-table-body">
       {% for p in pipelines %}
-      <tr>
+      <tr data-pipeline="{{ p.name }}">
         <td><a href="/pipelines/{{ p.name }}">{{ p.name }}</a></td>
-        <td class="muted">{{ p.kind }}</td>
-        <td class="muted">{{ p.schedule or "-" }}</td>
+        <td><span class="kind-tag">{{ p.kind }}</span></td>
+        <td class="mono">{{ p.schedule or "-" }}</td>
         <td>{{ "yes" if p.enabled else "paused" }}</td>
-        <td>
-          <span class="badge" style="background: {{ p.color }};">{{ p.last_status }}</span>
-          {% if p.last_ended %}<span class="muted"> {{ p.last_ended }}</span>{% endif %}
+        <td class="js-dots"><span class="dot-row">{% for d in p.recent_dots %}<span class="dot" style="background: {{ d.color }};" title="{{ d.status }}"></span>{% endfor %}</span></td>
+        <td class="js-status">
+          <span class="badge{{ ' running' if p.last_status == 'running' else '' }}" style="background: {{ p.color }};">{{ p.last_status }}</span>
+          {% if p.last_ended %}<span class="muted">{{ p.last_ended }}</span>{% endif %}
         </td>
-        <td><a href="/pipelines/{{ p.name }}">details</a></td>
+        <td><a href="/pipelines/{{ p.name }}">details &rarr;</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No pipelines registered yet. Register one from the CLI (<code>flowctl register &lt;file&gt;</code>) or <a href="/jobs/new">create a simple job</a>.</p>
+  <p class="empty-state">No pipelines registered yet. Register one from the CLI (<code>flowctl register &lt;file&gt;</code>) or <a href="/jobs/new">create a simple job</a>.</p>
   {% endif %}
-</section>
+</div>
 
 {% if adhoc_runs %}
-<section>
-  <h2>Recent ad-hoc runs <span class="muted">(not registered)</span></h2>
+<div class="panel">
+  <h2>Recent ad-hoc runs <span class="muted" style="font-weight: 400;">(not registered)</span></h2>
   <table>
     <thead><tr><th>Run</th><th>Pipeline</th><th>Status</th><th>Ended</th></tr></thead>
     <tbody>
@@ -53,7 +88,37 @@
       {% endfor %}
     </tbody>
   </table>
-</section>
+</div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  fcInitHomepage();
+
+  const chartData = {{ chart_data | tojson }};
+  const ctx = document.getElementById('activity-chart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: chartData.map(d => d.date.slice(5)),
+        datasets: [
+          { label: 'success', data: chartData.map(d => d.success), backgroundColor: '#3fb950' },
+          { label: 'failed', data: chartData.map(d => d.failed), backgroundColor: '#f85149' },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, grid: { color: '#1a222c' }, ticks: { color: '#7d8b9a', font: { family: 'JetBrains Mono', size: 10 } } },
+          y: { stacked: true, beginAtZero: true, ticks: { precision: 0, color: '#7d8b9a' }, grid: { color: '#1a222c' } }
+        },
+        plugins: { legend: { labels: { color: '#8b98a9' } } }
+      }
+    });
+  }
+</script>
 {% endblock %}
